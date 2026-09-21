@@ -1,0 +1,12 @@
+node_modules/
+.env
+.data/
+coverage/
+
+.next/
+*.tsbuildinfo
+
+.env.*
+!.env.example
+pages-demo/out/
+pages-demo/public/

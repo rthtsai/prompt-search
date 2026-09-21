@@ -40,7 +40,7 @@ export function validateExtracted(value: unknown): asserts value is Extracted {
   if (!Array.isArray(p.variables) || p.variables.length > 40) throw new Error('變數格式錯誤');
   const names = new Set<string>();
   for (const v of p.variables) {
-    if (!v || typeof v.name !== 'string' || !/^[\p{L}\p{N}_ -]{1,60}$/u.test(v.name) || v.name !== v.name.trim() || typeof v.label !== 'string' || typeof v.example !== 'string' || typeof v.required !== 'boolean' || names.has(v.name)) throw new Error('變數格式錯誤或重複');
+    if (!v || typeof v.name !== 'string' || !/^[\p{L}\p{N}_ /／-]{1,60}$/u.test(v.name) || v.name !== v.name.trim() || typeof v.label !== 'string' || typeof v.example !== 'string' || typeof v.required !== 'boolean' || names.has(v.name)) throw new Error('變數格式錯誤或重複');
     names.add(v.name);
   }
   const placeholders = new Set([...p.body.matchAll(/\{\{([^{}]+)\}\}/g)].map(m => m[1]));

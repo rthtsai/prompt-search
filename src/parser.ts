@@ -48,8 +48,7 @@ export function parseInput(input: string, filename = '貼上文字'): Parsed[] {
         if (!fence) fence = match[1][0]; else if (fence === match[1][0]) fence = null;
         buffer.push(line); continue;
       }
-      if (!fence && (/^\s*---+\s*$/.test(line) || !line.trim())) { flush(); continue; }
-      if (!fence && /^#{1,6}\s/.test(line)) { flush(); buffer.push(line.replace(/^#{1,6}\s+/, '')); continue; }
+      if (!fence && /^\s*---+\s*$/.test(line)) { flush(); continue; }
       buffer.push(line);
     }
     flush();

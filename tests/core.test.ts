@@ -67,7 +67,7 @@ test('空白搜尋與超長查詢',async () => {
   await assert.rejects(s.search(DEMO_USER,'字'.repeat(24001)),/24,000/);
 });
 test('純文字／Markdown 切分，保留程式碼區塊內空行',() => {
-  assert.equal(parseInput(sample+'\n\n'+sample,'file.txt').length,2);
+  assert.equal(parseInput(sample+'\n\n'+sample,'file.txt').length,1);
   const code = '# 範例\n請檢查以下程式碼並解釋錯誤與改善方向。\n```js\nlet x = 1;\n\n// ---\n```';
   assert.equal(parseInput(code,'file.md').length,1);
   assert.equal(parseInput('太短\n---\n'+sample).length,1);

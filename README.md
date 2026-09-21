@@ -49,9 +49,9 @@ PAGES_BASE_PATH=/prompt-search pnpm pages:build
 - 放到既有網站子目錄 `https://帳號.github.io/iisr-lab/prompt-search/`：設定 `/iisr-lab/prompt-search`。
 - 帳號根網站或自訂網域根目錄：設定空字串。
 
-`docs/github-pages-workflow.yml` 提供獨立儲存庫的部署範本。確認是新建的獨立專案後，才能放到 `.github/workflows/`，並把 Pages 設為 GitHub Actions。若是加入既有 iisr-lab，需先讀取原站的發布流程，再只加入新的子目錄；不要直接替换原網站的部署產物。
+已部署至 https://rthtsai.github.io/prompt-search/ ，原始碼位於 https://github.com/rthtsai/prompt-search 。GitHub Pages 使用 `main` 分支的 `/docs` 資料夾；更新網站時，將 `pages-demo/out/` 的建置結果同步到 `docs/`（包含 `.nojekyll`）並提交。
 
-目前部署目標尚未確認，GitHub 連線讀取 `rthtsai/iisr-lab` 回傳 404、可見儲存庫清單為空，因此**尚未上傳或發布**。
+`docs/github-pages-workflow.yml` 是日後改用 GitHub Actions 的選用範本，目前未啟用。
 
 ## 驗證
 
@@ -62,7 +62,7 @@ pnpm build
 pnpm pages:build
 ```
 
-已有 42 項本機邏輯／CLI／App service／Pages 搜尋測試。Next.js 本機版與 Pages 版都已成功建置；尚未完成瀏覽器實際操作與視覺驗證，也尚未完成正式 AI／PostgreSQL 整合驗收。
+已有 42 項本機邏輯／CLI／App service／Pages 搜尋測試。Next.js 本機版與 Pages 版都已成功建置；公開網站已驗證首頁、中文搜尋與變數即時預覽；複製功能尚未確認剪貼簿結果，正式 AI／PostgreSQL 整合也尚未驗收。
 
 `.env*`、`.data/`、`node_modules/`、`.next/` 不納入版本控制；只有 `.env.example` 是公開範例。
 

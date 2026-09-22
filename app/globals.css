@@ -82,3 +82,10 @@
 @media(max-width:960px){.bulk-bar{left:50%}}
 @media(max-width:740px){.editor-bodies{grid-template-columns:1fr}.variable-editor-row{grid-template-columns:1fr 1fr}.variable-editor-row code{grid-column:1/-1;justify-self:start}.variable-editor-row .wide{grid-column:1/-1}.bulk-bar{bottom:12px;gap:8px}.other-hint{flex-wrap:wrap}.other-hint button{margin-left:0}.modal-footer{flex-wrap:wrap}}
 @media(max-width:740px){.sync-status span{display:none}.sync-status{padding:6px}.top-actions{gap:8px}.breadcrumb strong{white-space:nowrap}.bulk-bar{left:10px;right:10px;transform:none;flex-wrap:nowrap;overflow-x:auto;padding:8px 10px;gap:6px}.bulk-bar .button{padding:7px 9px}.bulk-move{padding:0 6px}.bulk-move select{max-width:92px}}
+/* Drag a card onto a category */
+.prompt-card[draggable=true]{cursor:grab}
+.prompt-card[draggable=true]:active{cursor:grabbing}
+.prompt-card.card-dragging{opacity:.45;border-style:dashed}
+.is-dragging .category-nav button{outline:1px dashed #b9cdb5;outline-offset:-2px}
+.is-dragging .category-tile{outline:2px dashed #b9cdb5;outline-offset:-4px}
+.category-nav button.drop-over,.category-tile.drop-over{background:#d6e7d2;color:var(--green);outline:2px solid #63966f;outline-offset:-2px}

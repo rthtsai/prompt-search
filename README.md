@@ -2,14 +2,17 @@
 
 可搜尋、分類、匯入、填變數並複製的繁體中文網頁 App。已有 Next.js 前端與桌面／手機排版。
 
-## 目前兩種執行方式
+## 執行方式
 
 | 版本 | 執行位置 | 儲存方式 | 搜尋與整理 |
 | --- | --- | --- | --- |
+| Supabase 共用雲端版（待設定專案） | GitHub Pages + Supabase Postgres | 雲端為主，localStorage 僅作快取 | 共用新增／編輯／刪除、舊資料遷移、JSON 備份 |
 | GitHub Pages 示範版 | 靜態網站，直接用瀏覽器開啟 | 目前瀏覽器的 IndexedDB | 中文關鍵字、同義詞與規則整理 |
 | 本機開發版 | Next.js 本機服務 | `.data/web/library.json` | 本機測試向量與規則整理 |
 
 正式 AI、雲端帳號、跨裝置同步、分享額度尚未連接到前端。原本的 PostgreSQL／pgvector／pg_bigm 與 OpenAI adapter 仍保留於 `src/`，目前透過 CLI 驗證，不能宣稱正式搜尋驗收已完成。
+
+Supabase 連線程式、遷移 SQL 與測試已加入。**正式網站尚未切換雲端**：需先建立擁有者的 Supabase 專案，完成設定與實機驗收。詳見 [共用雲端部署與驗收](docs/supabase-setup.md)。
 
 ## 已有介面功能
 
@@ -62,7 +65,7 @@ pnpm build
 pnpm pages:build
 ```
 
-已有 42 項本機邏輯／CLI／App service／Pages 搜尋測試。Next.js 本機版與 Pages 版都已成功建置；公開網站已驗證首頁、中文搜尋與變數即時預覽；複製功能尚未確認剪貼簿結果，正式 AI／PostgreSQL 整合也尚未驗收。
+已有 54 項本機邏輯／CLI／App service／Pages 搜尋測試。Next.js 本機版與 Pages 版都已成功建置；公開網站已驗證首頁、中文搜尋與變數即時預覽；複製功能尚未確認剪貼簿結果，正式 AI／PostgreSQL 整合也尚未驗收。
 
 `.env*`、`.data/`、`node_modules/`、`.next/` 不納入版本控制；只有 `.env.example` 是公開範例。
 

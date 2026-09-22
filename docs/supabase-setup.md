@@ -5,7 +5,7 @@
 ## 一次性設定
 
 1. 用專案擁有者帳號登入 Supabase，建立資料庫專案。登入、服務條款與密碼由帳號擁有者完成。
-2. 若已有本專案 `db/001_init.sql` 的資料表，只執行 `supabase/migrations/002_shared_library.sql`。全新專案先執行 `supabase/001_fresh_project.sql` 再執行 002。新專案保留同樣的資料表與關聯，文字索引使用 Supabase 支援的 pg_trgm，取代 pg_bigm。
+2. 若已有本專案 `db/001_init.sql` 的資料表，只執行 `supabase/migrations/002_shared_library.sql`。全新專案先執行 `supabase/001_fresh_project.sql` 再執行 002。新專案保留同樣的資料表與關聯，文字索引使用 Supabase 支援的 pg_trgm，取代 pg_bigm。 之後再執行 `supabase/migrations/003_versions_languages_categories.sql`（版本、英文版、分類管理、選項式變數）。
 3. 在建置環境設定下列公開資訊（不要設定 service_role 或資料庫密碼到前端）：
 
 ```sh

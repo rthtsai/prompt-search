@@ -14,6 +14,7 @@ base=base.replace('CREATE EXTENSION IF NOT EXISTS vector;','').replace('embeddin
 await db.exec('CREATE ROLE anon; CREATE ROLE authenticated;');
 await db.exec(base);
 await db.exec(await readFile(new URL('supabase/migrations/002_shared_library.sql',root),'utf8'));
+await db.exec(await readFile(new URL('supabase/migrations/003_versions_languages_categories.sql',root),'utf8'));
 await db.exec('SET ROLE anon');
 const rpc=async(request:any):Promise<any>=>(await db.query<any>('select public.prompt_library($1::jsonb) as result',[JSON.stringify(request)])).rows[0].result;
 const item={title:'雲端測試',body:'請將 {{文章}} 濃縮成三個重點，並且保留所有重要的數字與結論。',summary:'跨裝置測試',category:'翻譯與潤稿',variables:[{name:'文章',label:'文章',example:'',required:true}],tags:['test'],model_hint:[],source:'test'};

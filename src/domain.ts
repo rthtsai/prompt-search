@@ -1,6 +1,7 @@
 export const CATEGORIES = ['寫作', '報告文書', '翻譯與潤稿', '程式', '資料分析', '圖像生成', '影音', '行銷文案', '教學備課', '生活雜務', '角色與人設', '其他'] as const;
 export type Category = typeof CATEGORIES[number];
-export type Variable = { name: string; label: string; example: string; required: boolean };
+export type VariableType = 'text' | 'select' | 'radio' | 'number';
+export type Variable = { name: string; label: string; example: string; required: boolean; type?: VariableType; options?: string[] };
 export type Extracted = {
   title: string; body: string; summary: string; use_case: string; category: Category;
   tags: string[]; lang: 'zh-Hant' | 'zh-Hans' | 'en'; model_hint: string[]; variables: Variable[];

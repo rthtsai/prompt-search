@@ -1,7 +1,7 @@
-import {CATEGORIES} from '../domain.ts';
+import {CATEGORIES,type Variable} from '../domain.ts';
 import {parseInput} from '../parser.ts';
 import {organizeBrowser,searchBrowser} from './browser-store.ts';
-import {type CardPrompt,type ImportJob} from './types.ts';
+import {type CardPrompt,type ImportJob,mergeVariables} from './types.ts';
 import {CLOUD_CACHE_KEY,collectLegacy,legacyCard,legacyBackup,type LegacySnapshot} from './legacy-storage.ts';
 
 export type CloudConfig={url:string;key:string};
@@ -45,9 +45,29 @@ export async function readAll(rpc:Rpc):Promise<CardPrompt[]>{
   cursor=page.at(-1)!.id;if(page.length<200)break;
  }return all;
 }
+// One card per prompt group: the highest version is shown, all versions ride along (newest first).
+export function groupVersions(all:CardPrompt[]):CardPrompt[]{
+ const groups=new Map<string,CardPrompt[]>();
+ for(const p of all){const g=p.group_id??p.id;const list=groups.get(g);if(list)list.push(p);else groups.set(g,[p]);}
+ return [...groups.values()].map(list=>{
+  list.sort((a,b)=>(b.version_no??1)-(a.version_no??1)||b.updated_at.localeCompare(a.updated_at));
+  const [latest]=list;const uses=list.reduce((n,p)=>n+p.use_count,0);
+  const last=list.map(p=>p.last_used).filter(Boolean).sort().at(-1)??null;
+  return list.length>1?{...latest,versions:list,use_count:uses,last_used:last}:latest;
+ });
+}
+type CloudCategory={name:string;fixed?:boolean};
+export function draftItem(input:{title:string;body:string;body_en?:string|null;summary:string;category:string;variables?:Variable[];version_note?:string},previous:Variable[]=[]):CardPrompt{
+ const body=String(input.body??''),en=typeof input.body_en==='string'&&input.body_en.trim()?input.body_en:null;
+ if(body.trim().length<20)throw new Error('Prompt 內容至少 20 字');
+ if(en&&en.trim().length<20)throw new Error('英文版本至少 20 字，或留空');
+ const p=organizeBrowser(body.replace(/\{\{[^{}]+\}\}/g,'X'),'共用辭典');
+ return {...p,body,body_en:en,title:String(input.title??'').trim()||p.title,summary:String(input.summary??'').trim(),category:input.category,
+  variables:mergeVariables([body,en],input.variables??[],previous),version_note:String(input.version_note??'').slice(0,200)};
+}
 export class CloudStore {
  private rpc:Rpc;private jobs=new Map<string,ImportJob>();private migration:Promise<void>|undefined;
- private migrationMessage='';private cacheWarning='';
+ private migrationMessage='';private cacheWarning='';private categoryList:CloudCategory[]=CATEGORIES.map(name=>({name,fixed:name==='其他'}));
  private config:CloudConfig;
  constructor(config:CloudConfig,transport:typeof fetch=fetch){this.config=config;this.rpc=createRpc(config,transport);}
  private async migrate(){
@@ -55,10 +75,12 @@ export class CloudStore {
    const errors=[...source.errors,...result.errors];this.migrationMessage=errors.length?'本機資料遷移未完成，原始資料已保留。'+errors.join('；'):result.uploaded?`已將 ${result.uploaded} 則本機 Prompt 同步到共用資料庫。`:'';
   })().catch(e=>{this.migrationMessage='本機資料已保留，遷移失敗：'+(e as Error).message;});
  }
- private writeCache(prompts:CardPrompt[]){try{localStorage.setItem(CLOUD_CACHE_KEY,JSON.stringify({url:this.config.url,prompts,savedAt:new Date().toISOString()}));this.cacheWarning='';}catch{this.cacheWarning='雲端已連線，但瀏覽器快取無法儲存。';}}
- private readCache():CardPrompt[]|null{try{const c=JSON.parse(localStorage.getItem(CLOUD_CACHE_KEY)??'null');return c?.url===this.config.url?cards(c.prompts):null;}catch{return null;}}
+ private writeCache(prompts:CardPrompt[]){try{localStorage.setItem(CLOUD_CACHE_KEY,JSON.stringify({url:this.config.url,prompts,categories:this.categoryList,savedAt:new Date().toISOString()}));this.cacheWarning='';}catch{this.cacheWarning='雲端已連線，但瀏覽器快取無法儲存。';}}
+ private readCache():CardPrompt[]|null{try{const c=JSON.parse(localStorage.getItem(CLOUD_CACHE_KEY)??'null');if(c?.url!==this.config.url)return null;if(Array.isArray(c.categories))this.categoryList=c.categories;return cards(c.prompts);}catch{return null;}}
  private invalidate(){try{localStorage.removeItem(CLOUD_CACHE_KEY);}catch{/* Cache is never a write queue or migration source. */}}
- private async all(){const result=await readAll(this.rpc);this.writeCache(result);return result;}
+ private async all(){const [result,categories]=await Promise.all([readAll(this.rpc),this.rpc({op:'categories'}).catch(()=>null)]);
+  if(Array.isArray(categories)&&categories.every(c=>typeof c?.name==='string'))this.categoryList=categories;this.writeCache(result);return result;}
+ private async stamp(){return JSON.stringify(await this.rpc({op:'stamp'}));}
  async api<T>(path:string,options:RequestInit={}):Promise<T>{
   const url=new URL(path,'https://local.invalid');const input=options.body?JSON.parse(String(options.body)):{};
   if(url.pathname==='/api/migration/retry'){this.migration=undefined;await this.migrate();return {} as T;}
@@ -67,15 +89,26 @@ export class CloudStore {
    const prompts=await this.all();const legacy=await legacyBackup();return {version:2,exported_at:new Date().toISOString(),storage:'supabase',prompts,unmigrated_local:legacy} as T;
   }
   await this.migrate();
+  if(url.pathname==='/api/stamp')return {stamp:await this.stamp()} as T;
   if(url.pathname==='/api/library'){
-   let all:CardPrompt[],offline=false;let warning=[this.migrationMessage,this.cacheWarning].filter(Boolean).join(' ');
-   try{all=await this.all();warning=[this.migrationMessage,this.cacheWarning].filter(Boolean).join(' ');}catch(e){const cached=this.readCache();if(!cached)throw new Error([warning,'雲端無法連線：'+(e as Error).message].filter(Boolean).join(' '));all=cached;offline=true;warning+=' 目前顯示離線快取，新增、編輯或刪除必須連上雲端才會儲存。';}
+   let all:CardPrompt[],offline=false,stamp:string|undefined;let warning=[this.migrationMessage,this.cacheWarning].filter(Boolean).join(' ');
+   try{[all,stamp]=await Promise.all([this.all(),this.stamp().catch(()=>undefined)]);warning=[this.migrationMessage,this.cacheWarning].filter(Boolean).join(' ');}catch(e){const cached=this.readCache();if(!cached)throw new Error([warning,'雲端無法連線：'+(e as Error).message].filter(Boolean).join(' '));all=cached;offline=true;warning+=' 目前顯示離線快取，新增、編輯或刪除必須連上雲端才會儲存。';}
+   const groups=groupVersions(all);
    const q=url.searchParams.get('q')??'',category=url.searchParams.get('category'),tag=url.searchParams.get('tag'),sort=url.searchParams.get('sort');
-   let items=all.filter(p=>(!category||p.category===category)&&(!tag||p.tags.includes(tag)));
+   let items=groups.filter(p=>(!category||p.category===category)&&(!tag||p.tags.includes(tag)));
    if(q.trim())items=searchBrowser(items,q);
    if(sort==='recent')items=items.filter(p=>p.last_used).sort((a,b)=>(b.last_used??'').localeCompare(a.last_used??''));
    else if(sort==='popular')items.sort((a,b)=>b.use_count-a.use_count);else if(!q)items.sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
-   return {items,total:all.length,uses:all.reduce((n,p)=>n+p.use_count,0),categories:CATEGORIES.map(name=>({name,count:all.filter(p=>p.category===name).length})),tags:[...new Set(all.flatMap(p=>p.tags))],mode:'cloud',degraded:offline,warning} as T;
+   const names=[...this.categoryList];for(const p of groups)if(!names.some(c=>c.name===p.category))names.push({name:p.category});
+   return {items,total:groups.length,uses:all.reduce((n,p)=>n+p.use_count,0),categories:names.map(c=>({...c,count:groups.filter(p=>p.category===c.name).length})),tags:[...new Set(groups.flatMap(p=>p.tags))],mode:'cloud',degraded:offline,warning,manage:true,stamp,synced_at:offline?undefined:new Date().toISOString()} as T;
+  }
+  if(url.pathname==='/api/categories'){
+   const result=await this.rpc({op:'categories_save',items:input.items});if(!Array.isArray(result))throw new Error('雲端未確認分類變更');this.categoryList=result;this.invalidate();return result as T;
+  }
+  if(url.pathname==='/api/bulk'){
+   const ids:string[]=input.ids;if(!Array.isArray(ids)||!ids.length)throw new Error('請先勾選 Prompt');
+   const op=input.action==='move'?'move':input.action==='delete'?'delete_many':input.action==='merge'?'merge':'';if(!op)throw new Error('不支援的操作');
+   const result=await this.rpc({op,ids,category:input.category});this.invalidate();return result as T;
   }
   if(url.pathname==='/api/imports'){
    const parsed=parseInput(input.text,input.source),items:CardPrompt[]=[],errors:ImportJob['errors']=[],seen=new Set<string>();let skipped=0;
@@ -92,8 +125,8 @@ export class CloudStore {
    const id=url.pathname.split('/').at(-1)!;
    if(options.method==='DELETE'){const result=await this.rpc({op:'delete',id,version:input.version});if(!result?.deleted)throw new Error('雲端未確認刪除');this.invalidate();return result;}
    if(input.action==='edit'){
-    const p=organizeBrowser(input.body,'共用辭典');p.title=input.title;p.summary=input.summary;p.category=input.category;
-    const result=input.fork?(await uploadBatches([p],this.rpc))[0]:await this.rpc({op:'edit',id,version:input.version,item:p});this.invalidate();return result as T;
+    const p=draftItem(input,input.previous??[]);
+    const result=input.asVersion?await this.rpc({op:'version',id,item:{...p,source:'新版本'}}):input.fork?(await uploadBatches([{...p,source:'另存範本'}],this.rpc))[0]:await this.rpc({op:'edit',id,version:input.version,item:p});this.invalidate();return result as T;
    }
    if(input.action==='use'){const result=await this.rpc({op:'use',id,event:input.eventId});this.invalidate();return result as T;}
   }

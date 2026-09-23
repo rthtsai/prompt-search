@@ -66,6 +66,26 @@ export function draftItem(input:{title:string;body:string;body_en?:string|null;s
   variables:mergeVariables([body,en],input.variables??[],previous),version_note:String(input.version_note??'').slice(0,200)};
 }
 export const exampleUrl=(base:string,path:string)=>`${base}/storage/v1/object/public/prompt-examples/${path}`;
+/** What a prompt can produce: a picture, a file to download, or the text answer itself. */
+export const exampleTypes:Record<string,{ext:string;label:string}>={
+ 'image/jpeg':{ext:'jpg',label:'圖片'},'image/png':{ext:'png',label:'圖片'},'image/webp':{ext:'webp',label:'圖片'},
+ 'application/pdf':{ext:'pdf',label:'PDF'},
+ 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':{ext:'docx',label:'Word'},
+ 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':{ext:'xlsx',label:'Excel'},
+ 'application/vnd.openxmlformats-officedocument.presentationml.presentation':{ext:'pptx',label:'PowerPoint'},
+ 'text/plain':{ext:'txt',label:'文字檔'},'text/markdown':{ext:'md',label:'Markdown'},
+ 'text/csv':{ext:'csv',label:'CSV'},'application/json':{ext:'json',label:'JSON'}};
+const byExtension:Record<string,string>={pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+ xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+ pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+ txt:'text/plain',md:'text/markdown',csv:'text/csv',json:'application/json'};
+/** Browsers leave .md and a few others without a type, so fall back to the extension. */
+export function exampleKind(file:File){
+ const ext=(file.name.split('.').pop()??'').toLowerCase();
+ const mime=exampleTypes[file.type]?file.type:byExtension[ext];
+ if(!mime)throw new Error('支援圖片（JPG／PNG／WebP）、PDF、Word、Excel、PowerPoint、txt、md、csv、json');
+ return {mime,ext:exampleTypes[mime].ext,label:exampleTypes[mime].label,image:mime.startsWith('image/')};
+}
 /** Downscale in the browser so a phone photo or 4K render stays a small upload. */
 export async function shrinkImage(file:File,max=1600,quality=0.82):Promise<{blob:Blob;type:string}>{
  if(!/^image\/(jpeg|png|webp)$/.test(file.type))throw new Error('請選擇 JPG、PNG 或 WebP 圖片');
@@ -97,16 +117,26 @@ export class CloudStore {
  private async all(){const [result,categories]=await Promise.all([readAll(this.rpc),this.rpc({op:'categories'}).catch(()=>null)]);
   if(Array.isArray(categories)&&categories.every(c=>typeof c?.name==='string'))this.categoryList=categories;this.writeCache(result);return result;}
  private async stamp(){return JSON.stringify(await this.rpc({op:'stamp'}));}
- /** Upload first, then attach: a failed upload never leaves a broken image on a prompt. */
+ /** Upload first, then attach: a failed upload never leaves a broken example on a prompt. */
  async addExample(id:string,file:File,caption:string){
-  const {blob,type}=await shrinkImage(file);
-  if(blob.size>3*1024*1024)throw new Error('圖片太大，請改用 3 MB 以內的圖片');
-  const path=`${id}/${crypto.randomUUID()}.${type==='image/png'?'png':'jpg'}`;
+  const kind=exampleKind(file);
+  let body:Blob=file,ext=kind.ext,mime=kind.mime;
+  if(kind.image){const small=await shrinkImage(file);body=small.blob;mime=small.type;ext=small.type==='image/png'?'png':'jpg';
+   if(body.size>3*1024*1024)throw new Error('圖片太大，請改用 3 MB 以內的圖片');}
+  else if(body.size>10*1024*1024)throw new Error('檔案太大，請改用 10 MB 以內的檔案');
+  const path=`${id}/${crypto.randomUUID()}.${ext}`;
   const response=await this.transport(`${this.config.url}/storage/v1/object/prompt-examples/${path}`,
-   {method:'POST',headers:{apikey:this.config.key,'Content-Type':type,'x-upsert':'false',
-     ...(this.config.key.startsWith('eyJ')?{Authorization:'Bearer '+this.config.key}:{})},body:blob});
-  if(!response.ok){const detail=await response.text().catch(()=>'');throw new Error('圖片上傳失敗'+(detail?'：'+detail.slice(0,200):`（${response.status}）`));}
-  const card=await this.rpc({op:'example_add',id,path,caption:caption.slice(0,200)});this.invalidate();return card as CardPrompt;
+   {method:'POST',headers:{apikey:this.config.key,'Content-Type':mime,'x-upsert':'false',
+     ...(this.config.key.startsWith('eyJ')?{Authorization:'Bearer '+this.config.key}:{})},body});
+  if(!response.ok){const detail=await response.text().catch(()=>'');throw new Error('上傳失敗'+(detail?'：'+detail.slice(0,200):`（${response.status}）`));}
+  const entry={kind:kind.image?'image':'file',path,name:file.name.slice(0,120),mime,size:body.size,caption:caption.slice(0,200)};
+  const card=await this.rpc({op:'example_add',id,entry});this.invalidate();return card as CardPrompt;
+ }
+ /** A text answer needs no upload; it is stored with the prompt. */
+ async addTextExample(id:string,text:string,caption:string){
+  if(!text.trim())throw new Error('請先貼上文字結果');
+  const card=await this.rpc({op:'example_add',id,entry:{kind:'text',text:text.slice(0,8000),caption:caption.slice(0,200)}});
+  this.invalidate();return card as CardPrompt;
  }
  async api<T>(path:string,options:RequestInit={}):Promise<T>{
   const url=new URL(path,'https://local.invalid');const input=options.body?JSON.parse(String(options.body)):{};
@@ -133,7 +163,7 @@ export class CloudStore {
    const result=await this.rpc({op:'categories_save',items:input.items});if(!Array.isArray(result))throw new Error('雲端未確認分類變更');this.categoryList=result;this.invalidate();return result as T;
   }
   if(url.pathname==='/api/examples'&&options.method==='DELETE'){
-   const r=await this.rpc({op:'example_remove',id:input.id,path:input.path});this.invalidate();return r as T;
+   const r=await this.rpc({op:'example_remove',id:input.id,entry:{id:input.entryId,path:input.path}});this.invalidate();return r as T;
   }
   if(url.pathname==='/api/bulk'){
    const ids:string[]=input.ids;if(!Array.isArray(ids)||!ids.length)throw new Error('請先勾選 Prompt');
@@ -169,3 +199,4 @@ export function cloudApi<T>(path:string,options:RequestInit={}):Promise<T>{
 }
 function current(){return store??=new CloudStore({url:process.env.NEXT_PUBLIC_SUPABASE_URL??'',key:process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY??''});}
 export function cloudAddExample(id:string,file:File,caption:string){return current().addExample(id,file,caption);}
+export function cloudAddTextExample(id:string,text:string,caption:string){return current().addTextExample(id,text,caption);}

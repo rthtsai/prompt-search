@@ -35,9 +35,9 @@ Pages 版的資料只留在各自瀏覽器，其他訪客看不到；清除網�
 - **同步**：上方顯示「已同步 HH:MM」，點一下重新整理；畫面開著時每 20 秒檢查一次雲端是否有變動，有才重新載入。
 - **選項式變數**：編輯時可把每個 `{{變數}}` 設成自由填寫、下拉選單、單選按鈕或數字，並設定選項與是否必填。
 - **刪除**：卡片右上角直接有刪除鈕（連同所有版本），詳細頁的刪除只刪目前版本。
-- **範例圖片**：每則 Prompt 可以上傳最多 6 張產出範例（JPG／PNG／WebP，上傳前自動縮到長邊 1600px、3 MB 以內），詳細頁可放大檢視，卡片會顯示第一張當封面。圖片存在 Supabase Storage 的公開 bucket `prompt-examples`，任何人都看得到；移除只是從 Prompt 取消關聯，檔案仍留在 bucket 中。
+- **產出範例**：每則 Prompt 最多 6 個範例，可以是圖片（JPG／PNG／WebP，上傳前自動縮到長邊 1600px、3 MB 內）、檔案（PDF、Word、Excel、PowerPoint、txt、md、csv、json，10 MB 內）或直接貼上的文字結果（8000 字內）。圖片可放大檢視、檔案可下載、文字可展開；卡片用第一張圖片當封面。圖片與檔案存在 Supabase Storage 的公開 bucket `prompt-examples`，任何人都看得到；移除只是從 Prompt 取消關聯，檔案仍留在 bucket 中。
 
-套用方式：在 Supabase SQL Editor 依序執行 `supabase/migrations/003_versions_languages_categories.sql`、`004_examples.sql`、`004_storage.sql`（都可重複執行），再重新建置並發布 `docs/`。本機與瀏覽器示範版不支援上述管理功能，介面會自動隱藏。
+套用方式：在 Supabase SQL Editor 依序執行 `supabase/migrations/003_versions_languages_categories.sql`、`004_examples.sql`、`004_storage.sql`、`005_example_files.sql`、`005_storage.sql`（都可重複執行），再重新建置並發布 `docs/`。本機與瀏覽器示範版不支援上述管理功能，介面會自動隱藏。
 
 ## 本機啟動
 

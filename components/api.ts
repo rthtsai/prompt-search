@@ -6,3 +6,8 @@ export async function uploadExample(id:string,file:File,caption:string){
   const {cloudAddExample}=await import('../src/web/cloud-store');
   return cloudAddExample(id,file,caption);
 }
+export async function uploadTextExample(id:string,text:string,caption:string){
+  if(!cloudMode) throw new Error('這個版本不支援範例');
+  const {cloudAddTextExample}=await import('../src/web/cloud-store');
+  return cloudAddTextExample(id,text,caption);
+}

@@ -1,10 +1,10 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {ArrowDown,ArrowUp,Check,FolderInput,ImagePlus,Layers,LoaderCircle,Plus,Trash2,X} from 'lucide-react';
+import {ArrowDown,ArrowUp,Check,ChevronDown,FileText,FolderInput,ImagePlus,Layers,LoaderCircle,MessageSquareText,Plus,Trash2,X} from 'lucide-react';
 import {Button} from './ui/button';
 import {Modal} from './ui/dialog';
-import {api,uploadExample} from './api';
-import {exampleUrl} from '../src/web/cloud-store';
+import {api,uploadExample,uploadTextExample} from './api';
+import {exampleTypes,exampleUrl} from '../src/web/cloud-store';
 import type {Variable,VariableType} from '../src/domain';
 import {placeholders,type CardPrompt} from '../src/web/types';
 
@@ -102,37 +102,55 @@ export function BulkBar({selected,categories,onMove,onMerge,onDelete,onClear,bus
   </div>;
 }
 
-/** Example images (what the prompt produced), shown on the detail page and as the card cover. */
+/** What a prompt produced: pictures, files to download, or the text answer itself. */
 export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:CardPrompt;storage?:string;manage:boolean;onChanged:()=>void;notify:(s:string)=>void}) {
-  const [busy,setBusy]=useState(false),[caption,setCaption]=useState(''),[zoom,setZoom]=useState<string>('');
+  const [busy,setBusy]=useState(false),[caption,setCaption]=useState(''),[zoom,setZoom]=useState(''),[text,setText]=useState(''),[writing,setWriting]=useState(false);
   const input=useRef<HTMLInputElement>(null);
-  const images=prompt.examples??[];
-  if(!storage||(!images.length&&!manage)) return null;
-  async function upload(file:File){
+  const items=prompt.examples??[];
+  if(!storage||(!items.length&&!manage)) return null;
+  const kindOf=(e:typeof items[number])=>e.kind??'image';
+  async function run(what:Promise<unknown>,done:string){
     setBusy(true);
-    try{await uploadExample(prompt.id,file,caption);setCaption('');notify('範例圖片已加入');onChanged();}
+    try{await what;setCaption('');setText('');setWriting(false);notify(done);onChanged();}
     catch(e){notify((e as Error).message);}finally{setBusy(false);}
   }
-  async function remove(path:string){
-    if(!window.confirm('把這張範例圖片從 Prompt 移除？'))return;
-    setBusy(true);
-    try{await api('/api/examples',{method:'DELETE',body:JSON.stringify({id:prompt.id,path})});notify('已移除範例圖片');onChanged();}
-    catch(e){notify((e as Error).message);}finally{setBusy(false);}
-  }
+  const remove=(e:typeof items[number])=>{
+    if(!window.confirm('把這個範例從 Prompt 移除？'))return;
+    void run(api('/api/examples',{method:'DELETE',body:JSON.stringify({id:prompt.id,path:e.path,entryId:e.id})}),'已移除範例');
+  };
+  const size=(n?:number)=>n?n>=1048576?`${(n/1048576).toFixed(1)} MB`:`${Math.max(1,Math.round(n/1024))} KB`:'';
+  const images=items.filter(e=>kindOf(e)==='image'&&e.path),others=items.filter(e=>kindOf(e)!=='image');
   return <section className="example-panel">
-    <div className="panel-label"><span>03</span><h3>這個 Prompt 做出來的樣子</h3>{images.length>0&&<span className="live-label">{images.length} 張</span>}</div>
-    {images.length>0&&<div className="example-grid">{images.map(e=><figure key={e.path}>
-      <button className="example-open" onClick={()=>setZoom(exampleUrl(storage!,e.path))} aria-label={e.caption||'放大範例圖片'}>
-        <img src={exampleUrl(storage!,e.path)} alt={e.caption||`${prompt.title} 的範例圖片`} loading="lazy"/></button>
+    <div className="panel-label"><span>03</span><h3>這個 Prompt 做出來的樣子</h3>{items.length>0&&<span className="live-label">{items.length} 個</span>}</div>
+    {images.length>0&&<div className="example-grid">{images.map(e=><figure key={e.id??e.path}>
+      <button className="example-open" onClick={()=>setZoom(exampleUrl(storage!,e.path!))} aria-label={e.caption||'放大範例圖片'}>
+        <img src={exampleUrl(storage!,e.path!)} alt={e.caption||`${prompt.title} 的範例圖片`} loading="lazy"/></button>
       {e.caption&&<figcaption>{e.caption}</figcaption>}
-      {manage&&<button className="icon-button danger example-remove" aria-label="移除這張圖片" disabled={busy} onClick={()=>void remove(e.path)}><Trash2 size={14}/></button>}
+      {manage&&<button className="icon-button danger example-remove" aria-label="移除這個範例" disabled={busy} onClick={()=>remove(e)}><Trash2 size={14}/></button>}
     </figure>)}</div>}
-    {manage&&images.length<6&&<div className="example-add">
-      <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void upload(f);}}/>
-      <input className="example-caption" placeholder="圖片說明（選填）" maxLength={200} value={caption} onChange={e=>setCaption(e.target.value)}/>
-      <Button variant="outline" size="sm" disabled={busy} onClick={()=>input.current?.click()}>{busy?<LoaderCircle size={15} className="spin"/>:<ImagePlus size={15}/>}加範例圖片</Button>
+    {others.length>0&&<div className="example-list">{others.map(e=>kindOf(e)==='file'
+      ? <div className="example-file" key={e.id??e.path}>
+          <span className="file-mark"><FileText size={17}/></span>
+          <a href={exampleUrl(storage!,e.path!)} target="_blank" rel="noopener noreferrer" download={e.name}>{e.name||'下載檔案'}</a>
+          <small>{[exampleTypes[e.mime??'']?.label,size(e.size)].filter(Boolean).join(' · ')}{e.caption?` · ${e.caption}`:''}</small>
+          {manage&&<button className="icon-button danger" aria-label="移除這個範例" disabled={busy} onClick={()=>remove(e)}><Trash2 size={14}/></button>}
+        </div>
+      : <details className="example-text" key={e.id}><summary><MessageSquareText size={15}/>{e.caption||'文字結果'}<ChevronDown size={15}/></summary>
+          <pre>{e.text}</pre>
+          {manage&&<button className="icon-button danger" aria-label="移除這個範例" disabled={busy} onClick={()=>remove(e)}><Trash2 size={14}/></button>}
+        </details>)}</div>}
+    {manage&&items.length<6&&<div className="example-add">
+      <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json" hidden
+        onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void run(uploadExample(prompt.id,f,caption),'範例已加入');}}/>
+      <input className="example-caption" placeholder="說明（選填）" maxLength={200} value={caption} onChange={e=>setCaption(e.target.value)}/>
+      <Button variant="outline" size="sm" disabled={busy} onClick={()=>input.current?.click()}>{busy?<LoaderCircle size={15} className="spin"/>:<ImagePlus size={15}/>}加圖片或檔案</Button>
+      <Button variant="ghost" size="sm" disabled={busy} onClick={()=>setWriting(!writing)}><MessageSquareText size={15}/>貼上文字結果</Button>
     </div>}
-    {manage&&<p className="example-note">JPG、PNG 或 WebP，最多 6 張。上傳前會自動縮小，所有人都看得到。</p>}
+    {manage&&writing&&<div className="example-text-add">
+      <textarea rows={5} maxLength={8000} placeholder="把 AI 回答的結果貼在這裡，讓大家看到這個 Prompt 實際跑出什麼。" value={text} onChange={e=>setText(e.target.value)}/>
+      <Button size="sm" disabled={busy||!text.trim()} onClick={()=>void run(uploadTextExample(prompt.id,text,caption),'文字範例已加入')}>{busy?<LoaderCircle size={15} className="spin"/>:<Check size={15}/>}加入文字範例</Button>
+    </div>}
+    {manage&&<p className="example-note">圖片 JPG／PNG／WebP（自動縮小，3 MB 內）；檔案 PDF、Word、Excel、PowerPoint、txt、md、csv、json（10 MB 內）；或直接貼上文字。每則最多 6 個，所有人都看得到。</p>}
     {zoom&&<button className="example-lightbox" onClick={()=>setZoom('')} aria-label="關閉放大檢視"><img src={zoom} alt="範例圖片放大"/></button>}
   </section>;
 }

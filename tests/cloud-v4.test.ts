@@ -4,28 +4,28 @@ import assert from 'node:assert/strict';
 import {pgcrypto} from '@electric-sql/pglite/contrib/pgcrypto';
 import {pg_trgm} from '@electric-sql/pglite/contrib/pg_trgm';
 import {readFile} from 'node:fs/promises';
-import {CloudStore,exampleUrl} from '../src/web/cloud-store.ts';
+import {CloudStore,exampleUrl,exampleKind} from '../src/web/cloud-store.ts';
 
 test('v4：範例圖片上傳、附加、移除與限制',async()=>{
  const db=new PGlite({extensions:{pgcrypto,pg_trgm}});const root=new URL('../',import.meta.url);
  let base=await readFile(new URL('supabase/001_fresh_project.sql',root),'utf8');
  base=base.replace('CREATE EXTENSION IF NOT EXISTS vector;','').replace('embedding vector(1536)','embedding double precision[]').replace(/^CREATE INDEX prompt_embedding_hnsw.*$/m,'');
  await db.exec('CREATE ROLE anon; CREATE ROLE authenticated;');await db.exec(base);
- for(const f of ['supabase/migrations/002_shared_library.sql','supabase/migrations/003_versions_languages_categories.sql','supabase/migrations/004_examples.sql'])
+ for(const f of ['supabase/migrations/002_shared_library.sql','supabase/migrations/003_versions_languages_categories.sql','supabase/migrations/004_examples.sql','supabase/migrations/005_example_files.sql'])
   await db.exec(await readFile(new URL(f,root),'utf8'));
  await db.exec('SET ROLE anon');
  const rpc=async(request:any):Promise<any>=>(await db.query<any>('select public.prompt_library($1::jsonb) as result',[JSON.stringify(request)])).rows[0].result;
  const [p]=await rpc({op:'import',items:[{title:'畫圖','body':'請畫一張水彩風格的台灣街景，午後陽光，行人撐傘，色調溫暖。',summary:'',category:'圖像生成',variables:[],tags:[],model_hint:[],source:'test'}]});
  assert.deepEqual(p.examples,[]);
  const path=`${p.id}/${crypto.randomUUID()}.jpg`;
- let after=await rpc({op:'example_add',id:p.id,path,caption:'橘貓版本'});
+ let after=await rpc({op:'example_add',id:p.id,path,caption:'橘貓版本'}); // old client shape still works
  assert.equal(after.examples.length,1);assert.equal(after.examples[0].caption,'橘貓版本');
  await assert.rejects(rpc({op:'example_add',id:p.id,path}),/已經加過/);
  await assert.rejects(rpc({op:'example_add',id:p.id,path:'../secret.jpg'}),/路徑格式/);
  await assert.rejects(rpc({op:'example_add',id:p.id,path:`${p.id}/${crypto.randomUUID()}.svg`}),/路徑格式/);
  for(let i=0;i<5;i++) after=await rpc({op:'example_add',id:p.id,path:`${p.id}/${crypto.randomUUID()}.png`});
  assert.equal(after.examples.length,6);
- await assert.rejects(rpc({op:'example_add',id:p.id,path:`${p.id}/${crypto.randomUUID()}.jpg`}),/最多 6 張/);
+ await assert.rejects(rpc({op:'example_add',id:p.id,path:`${p.id}/${crypto.randomUUID()}.jpg`}),/最多 6 個/);
  // Editing the prompt keeps its images.
  const edited=await rpc({op:'edit',id:p.id,version:after.updated_at,item:{title:'畫圖 2',body:p.body,summary:'',category:'圖像生成',variables:[],tags:[],model_hint:[],source:'test'}});
  assert.equal(edited.examples.length,6);
@@ -55,9 +55,28 @@ test('v4：範例圖片上傳、附加、移除與限制',async()=>{
  assert.equal(saved.examples![0].caption,'第一次的結果');
  // A failed upload must not attach anything.
  const broken=new CloudStore({url:'https://t.supabase.co',key:'sb_publishable_test'},async(u,o)=>String(u).includes('/storage/')?new Response('no',{status:403}):transport(u,o));
- await assert.rejects(broken.addExample(q.id,file,''),/圖片上傳失敗/);
+ await assert.rejects(broken.addExample(q.id,file,''),/上傳失敗/);
  assert.equal((await rpc({op:'list'})).find((x:any)=>x.id===q.id).examples.length,1);
- await assert.rejects(store.addExample(q.id,new File([new Uint8Array(8)],'a.gif',{type:'image/gif'}),''),/JPG/);
+ await assert.rejects(store.addExample(q.id,new File([new Uint8Array(8)],'a.gif',{type:'image/gif'}),''),/支援圖片/);
+
+ // A produced file and a text answer are examples too.
+ const doc=new File([new Uint8Array(2048)],'測驗卷.docx',{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+ const withDoc=await store.addExample(q.id,doc,'Word 版測驗卷');
+ const fileEntry=withDoc.examples!.find(e=>e.kind==='file')!;
+ assert.equal(fileEntry.name,'測驗卷.docx');assert.equal(fileEntry.size,2048);assert.match(fileEntry.path!,/\.docx$/);
+ assert.equal(uploads.at(-1)!.type,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+ // .md often arrives with an empty type; the extension decides.
+ assert.equal(exampleKind(new File([''],'note.md',{type:''})).ext,'md');
+ await assert.rejects(rpc({op:'example_add',id:q.id,entry:{kind:'file',path:`${q.id}/${crypto.randomUUID()}.exe`,name:'x.exe'}}),/路徑格式/);
+ const withText=await store.addTextExample(q.id,'第 1 題：下列何者正確？\n(A) ...','出題結果');
+ const textEntry=withText.examples!.find(e=>e.kind==='text')!;
+ assert.match(textEntry.text!,/第 1 題/);assert.equal(textEntry.caption,'出題結果');assert.ok(textEntry.id);
+ await assert.rejects(store.addTextExample(q.id,'   ',''),/請先貼上/);
+ await assert.rejects(rpc({op:'example_add',id:q.id,entry:{kind:'text',text:'x'.repeat(8001)}}),/8000/);
+ // Removing by entry id leaves the rest alone.
+ const left=await store.api<any>('/api/examples',{method:'DELETE',body:JSON.stringify({id:q.id,entryId:textEntry.id})});
+ assert.equal(left.examples.length,withText.examples!.length-1);
+ assert.ok(!left.examples.some((e:any)=>e.id===textEntry.id));
  await db.close();
 });
 

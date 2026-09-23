@@ -65,11 +65,27 @@ export function draftItem(input:{title:string;body:string;body_en?:string|null;s
  return {...p,body,body_en:en,title:String(input.title??'').trim()||p.title,summary:String(input.summary??'').trim(),category:input.category,
   variables:mergeVariables([body,en],input.variables??[],previous),version_note:String(input.version_note??'').slice(0,200)};
 }
+export const exampleUrl=(base:string,path:string)=>`${base}/storage/v1/object/public/prompt-examples/${path}`;
+/** Downscale in the browser so a phone photo or 4K render stays a small upload. */
+export async function shrinkImage(file:File,max=1600,quality=0.82):Promise<{blob:Blob;type:string}>{
+ if(!/^image\/(jpeg|png|webp)$/.test(file.type))throw new Error('請選擇 JPG、PNG 或 WebP 圖片');
+ if(typeof createImageBitmap!=='function')return {blob:file,type:file.type};
+ const bitmap=await createImageBitmap(file);
+ const scale=Math.min(1,max/Math.max(bitmap.width,bitmap.height));
+ if(scale===1&&file.size<=900_000)return {blob:file,type:file.type};
+ const canvas=document.createElement('canvas');
+ canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);
+ canvas.getContext('2d')!.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close?.();
+ const type=file.type==='image/png'?'image/png':'image/jpeg';
+ const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,type,quality));
+ if(!blob)return {blob:file,type:file.type};
+ return blob.size<file.size?{blob,type}:{blob:file,type:file.type};
+}
 export class CloudStore {
  private rpc:Rpc;private jobs=new Map<string,ImportJob>();private migration:Promise<void>|undefined;
  private migrationMessage='';private cacheWarning='';private categoryList:CloudCategory[]=CATEGORIES.map(name=>({name,fixed:name==='其他'}));
- private config:CloudConfig;
- constructor(config:CloudConfig,transport:typeof fetch=fetch){this.config=config;this.rpc=createRpc(config,transport);}
+ private config:CloudConfig;private transport:typeof fetch;
+ constructor(config:CloudConfig,transport:typeof fetch=fetch){this.config=config;this.transport=transport.bind(globalThis);this.rpc=createRpc(config,transport);}
  private async migrate(){
   return this.migration??=(async()=>{const source=await collectLegacy();const result=await migrateSnapshots(source.snapshots,this.rpc);
    const errors=[...source.errors,...result.errors];this.migrationMessage=errors.length?'本機資料遷移未完成，原始資料已保留。'+errors.join('；'):result.uploaded?`已將 ${result.uploaded} 則本機 Prompt 同步到共用資料庫。`:'';
@@ -81,6 +97,17 @@ export class CloudStore {
  private async all(){const [result,categories]=await Promise.all([readAll(this.rpc),this.rpc({op:'categories'}).catch(()=>null)]);
   if(Array.isArray(categories)&&categories.every(c=>typeof c?.name==='string'))this.categoryList=categories;this.writeCache(result);return result;}
  private async stamp(){return JSON.stringify(await this.rpc({op:'stamp'}));}
+ /** Upload first, then attach: a failed upload never leaves a broken image on a prompt. */
+ async addExample(id:string,file:File,caption:string){
+  const {blob,type}=await shrinkImage(file);
+  if(blob.size>3*1024*1024)throw new Error('圖片太大，請改用 3 MB 以內的圖片');
+  const path=`${id}/${crypto.randomUUID()}.${type==='image/png'?'png':'jpg'}`;
+  const response=await this.transport(`${this.config.url}/storage/v1/object/prompt-examples/${path}`,
+   {method:'POST',headers:{apikey:this.config.key,'Content-Type':type,'x-upsert':'false',
+     ...(this.config.key.startsWith('eyJ')?{Authorization:'Bearer '+this.config.key}:{})},body:blob});
+  if(!response.ok){const detail=await response.text().catch(()=>'');throw new Error('圖片上傳失敗'+(detail?'：'+detail.slice(0,200):`（${response.status}）`));}
+  const card=await this.rpc({op:'example_add',id,path,caption:caption.slice(0,200)});this.invalidate();return card as CardPrompt;
+ }
  async api<T>(path:string,options:RequestInit={}):Promise<T>{
   const url=new URL(path,'https://local.invalid');const input=options.body?JSON.parse(String(options.body)):{};
   if(url.pathname==='/api/migration/retry'){this.migration=undefined;await this.migrate();return {} as T;}
@@ -100,10 +127,13 @@ export class CloudStore {
    if(sort==='recent')items=items.filter(p=>p.last_used).sort((a,b)=>(b.last_used??'').localeCompare(a.last_used??''));
    else if(sort==='popular')items.sort((a,b)=>b.use_count-a.use_count);else if(!q)items.sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
    const names=[...this.categoryList];for(const p of groups)if(!names.some(c=>c.name===p.category))names.push({name:p.category});
-   return {items,total:groups.length,uses:all.reduce((n,p)=>n+p.use_count,0),categories:names.map(c=>({...c,count:groups.filter(p=>p.category===c.name).length})),tags:[...new Set(groups.flatMap(p=>p.tags))],mode:'cloud',degraded:offline,warning,manage:true,stamp,synced_at:offline?undefined:new Date().toISOString()} as T;
+   return {items,total:groups.length,uses:all.reduce((n,p)=>n+p.use_count,0),categories:names.map(c=>({...c,count:groups.filter(p=>p.category===c.name).length})),tags:[...new Set(groups.flatMap(p=>p.tags))],mode:'cloud',degraded:offline,warning,manage:true,storage:this.config.url,stamp,synced_at:offline?undefined:new Date().toISOString()} as T;
   }
   if(url.pathname==='/api/categories'){
    const result=await this.rpc({op:'categories_save',items:input.items});if(!Array.isArray(result))throw new Error('雲端未確認分類變更');this.categoryList=result;this.invalidate();return result as T;
+  }
+  if(url.pathname==='/api/examples'&&options.method==='DELETE'){
+   const r=await this.rpc({op:'example_remove',id:input.id,path:input.path});this.invalidate();return r as T;
   }
   if(url.pathname==='/api/bulk'){
    const ids:string[]=input.ids;if(!Array.isArray(ids)||!ids.length)throw new Error('請先勾選 Prompt');
@@ -135,6 +165,7 @@ export class CloudStore {
 }
 let store:CloudStore|undefined;
 export function cloudApi<T>(path:string,options:RequestInit={}):Promise<T>{
- store??=new CloudStore({url:process.env.NEXT_PUBLIC_SUPABASE_URL??'',key:process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY??''});
- return store.api<T>(path,options);
+ return current().api<T>(path,options);
 }
+function current(){return store??=new CloudStore({url:process.env.NEXT_PUBLIC_SUPABASE_URL??'',key:process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY??''});}
+export function cloudAddExample(id:string,file:File,caption:string){return current().addExample(id,file,caption);}

@@ -1,0 +1,18 @@
+/* 只有班級版（ai-class-lab）會載入這個檔案；原版的建置不會包含它。 */
+/* 班級版：iPad 上單手操作，所以按鈕和輸入框都放大 */
+.class-shell .main-content{max-width:720px;margin:0 auto;padding:24px 18px 60px}
+.class-bar{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line);margin-bottom:22px}
+.class-bar .class-name{font-weight:600}
+.class-bar .class-who{margin-left:auto;font-size:13px;color:var(--ink-soft)}
+.class-bar .class-who em{font-style:normal;margin-right:8px;padding:2px 8px;border-radius:999px;background:var(--accent-soft,#e7efe9)}
+.class-gate{padding:36px 4px;text-align:left}
+.class-gate h1{font-size:30px;line-height:1.35;margin:10px 0 12px}
+.class-gate p{color:var(--ink-soft);line-height:1.8;margin:0 0 22px;max-width:40ch}
+.class-gate form{display:grid;gap:12px;max-width:380px}
+.class-code-input{width:100%;padding:16px 18px;font-size:20px;letter-spacing:.08em;
+  border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.class-big{width:100%;min-height:56px;font-size:17px;justify-content:center}
+.class-hint{color:var(--ink-soft);font-size:13px}
+.class-error{display:flex;gap:10px;align-items:center;padding:12px 14px;margin-bottom:18px;
+  border:1px solid #e0c0b4;border-radius:12px;background:#fdf3ef;font-size:14px}
+.class-switch{display:grid;gap:8px;margin-top:14px}

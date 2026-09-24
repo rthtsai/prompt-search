@@ -13,10 +13,19 @@ const LABELS:[RegExp,string][]=[[/選擇題/,'選擇題'],[/填充題|填空/,'�
 
 const chars=(s:string)=>[...s];
 const cut=(s:string,n:number)=>chars(s).length<=n?s:chars(s).slice(0,n).join('')+'…';
+// 中文一個字資訊量大，40 字就夠；英文要放寬，不然一句話還沒說完就被切掉
+const room=(s:string,cjk=40,latin=80)=>/[\u4e00-\u9fff]/.test(s)?cjk:latin;
 const clean=(s:string)=>s.replace(/\{\{([^{}]+)\}\}/g,'$1').replace(/^[#>\-*•\s]+|^\d+[.、)）]\s*/g,'').replace(/\s+/g,' ').trim();
 const bare=(s:string)=>s.replace(/[\s，。、：:；;（）()「」【】\-—·.]/g,'').toLowerCase();
 
 /** 沒有完整句子的表單型 prompt（題目卷、模板），改成列出它包含的項目。 */
+/** 「你是資深工程師，請檢查以下程式碼」這種一句話裡先設角色再交代任務的，把角色那段切掉。 */
+const ROLE_CLAUSE=/^((you are|as an?|act as|i want you to)[^.,;]*?(,|;|\s+and\s+|\s+then\s+|\s+please\s+)\s*|(你是|妳是|假設你|扮演|作為|身為)[^。，,]*?[，,]\s*(並|然後|請)?)/i;
+function deRole(s:string):string{
+  const rest=s.replace(ROLE_CLAUSE,'').trim();
+  return rest!==s&&chars(rest).length>=8&&ACTION.test(rest)?rest:'';
+}
+
 function outline(body:string):string{
   const found=LABELS.filter(([re])=>re.test(body)).map(([,label])=>label);
   return found.length>=2?`${found.slice(0,5).join('、')}${found.length>5?' 等':''}的模板`:'';
@@ -26,19 +35,21 @@ export function describe(body:string,options:{title?:string;variables?:Variable[
   const text=String(body??'');
   if(!text.trim())return '';
   const lines=text.split('\n').map(clean).filter(Boolean);
-  const sentences=lines.flatMap(line=>line.split(/(?<=[。！？!?；;])/).map(clean)).filter(Boolean);
+  // 中文靠全形標點斷句；英文靠句點＋空白＋大寫開頭（前面要求兩個字元，才不會把 e.g. 或 Dr. 切開）
+  const SPLIT=/(?<=[。！？；;])|(?<=[a-z0-9)\]"'][a-z0-9)\]"'][.!?])\s+(?=["'(A-Z])/;
+  const sentences=lines.flatMap(line=>line.split(SPLIT).map(clean)).filter(Boolean);
   const usable=sentences.filter(s=>!ROLE.test(s)&&chars(s).length>=8);
-  let core=usable.find(s=>ACTION.test(s))??usable[0]??'';
-  core=core.replace(/^(請|麻煩你?|幫我|幫你)/,'').replace(/[。．.、，]$/,'').trim();
+  let core=usable.find(s=>ACTION.test(s))??sentences.map(deRole).find(Boolean)??usable[0]??'';
+  core=core.replace(/^(請|麻煩你?|幫我|幫你|please\s+|kindly\s+)/i,'').replace(/[。．.、，]$/,'').trim();
 
   const head=clean(options.title??'').replace(/（[^）]*）|\([^)]*\)/g,'').replace(/^\d+\.\s*/,'').replace(/[：:｜|]\s*$/,'').trim();
   // 標題本身就是內文開頭（像 /verify 這種斜線指令）時，不要再重複貼一次
   const firstLine=lines[0]??'';
   const titleEchoesBody=!!firstLine&&(bare(head).includes(bare(firstLine))||bare(firstLine).includes(bare(head)));
-  let result=core?cut(core,40):'';
+  let result=core?cut(core,room(core)):'';
   if(!result){
     // 表單型或太短：先試著列出內容項目，再退回開頭文字
-    result=outline(text)||cut(lines.join('｜'),40);
+    result=outline(text)||cut(lines.join('｜'),room(text));
     if(head&&bare(result).startsWith(bare(head))) result=result.slice(head.length).replace(/^[：:｜|\s]+/,'')||result;
   }
   // 標題若不是內文的一部分，放前面當提示；重複的話就不加
@@ -46,14 +57,15 @@ export function describe(body:string,options:{title?:string;variables?:Variable[
     return parts.length>1&&new Set(parts).size<parts.length;})();
   if(!result||repetitive||chars(result).length<6){
     // 幾乎只有變數的模板：用標題加上要填的欄位來說明
-    result=head||cut(lines.join('｜'),40);
+    result=head||cut(lines.join('｜'),room(text));
   } else if(head&&!titleEchoesBody&&chars(head).length<=16
       &&!bare(result).includes(bare(head))&&!bare(head).includes(bare(result))){
     result=`${head}：${result}`;
   }
 
+  result=result.replace(/[。．.、，]$/,'').trim();
   const format=FORMATS.find(([re])=>re.test(text));
-  if(format&&!result.includes(format[1]))result+=`，輸出${format[1]}`;
+  if(format&&!format[0].test(result))result+=`，輸出${format[1]}`;
   const names=(options.variables??[]).map(v=>(v.label||v.name).replace(/（[^）]*）/g,'').trim()).filter(Boolean);
   if(names.length)result+=`（可填：${names.slice(0,3).join('、')}${names.length>3?' 等':''}）`;
   return cut(result.replace(/\s+/g,' ').replace(/^[：:、，,｜|\s]+/,'').trim(),90);

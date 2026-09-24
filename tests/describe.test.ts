@@ -57,3 +57,18 @@ test('每一則實際資料都產得出說明，且長度合理', async () => {
     assert.equal(text.includes('{{'),false,p.title);
   }
 });
+
+test('英文 prompt 會跳過角色設定，抓真正在交代任務的那一句', () => {
+  const out = summarise('You are a helpful teaching assistant. Please summarise the attached article into three key points and output them as a table.');
+  assert.ok(!/helpful teaching assistant/i.test(out), `角色句不該出現在說明裡：${out}`);
+  assert.match(out, /summarise/i);
+  assert.ok(!/^Please/i.test(out), `開頭的 Please 應該去掉：${out}`);
+  // 內文自己已經說了 table，就不該再補一次「，輸出表格」
+  assert.match(out, /table/i);
+  assert.ok(!/輸出表格/.test(out), `格式不該重複標註：${out}`);
+});
+
+test('e.g. 或 Dr. 這種縮寫不會被當成句子結尾', () => {
+  const out = summarise('Rewrite the paragraph for a general audience, e.g. avoid jargon. Keep it under 100 words.');
+  assert.match(out, /jargon/i);
+});

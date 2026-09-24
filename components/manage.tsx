@@ -119,12 +119,18 @@ export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:
     void run(api('/api/examples',{method:'DELETE',body:JSON.stringify({id:prompt.id,path:e.path,entryId:e.id})}),'已移除範例');
   };
   const size=(n?:number)=>n?n>=1048576?`${(n/1048576).toFixed(1)} MB`:`${Math.max(1,Math.round(n/1024))} KB`:'';
-  const images=items.filter(e=>kindOf(e)==='image'&&e.path),others=items.filter(e=>kindOf(e)!=='image');
+  const images=items.filter(e=>kindOf(e)==='image'&&e.path),videos=items.filter(e=>kindOf(e)==='video'&&e.path),
+    others=items.filter(e=>!['image','video'].includes(kindOf(e)));
   return <section className="example-panel">
     <div className="panel-label"><span>03</span><h3>這個 Prompt 做出來的樣子</h3>{items.length>0&&<span className="live-label">{items.length} 個</span>}</div>
     {images.length>0&&<div className="example-grid">{images.map(e=><figure key={e.id??e.path}>
       <button className="example-open" onClick={()=>setZoom(exampleUrl(storage!,e.path!))} aria-label={e.caption||'放大範例圖片'}>
         <img src={exampleUrl(storage!,e.path!)} alt={e.caption||`${prompt.title} 的範例圖片`} loading="lazy"/></button>
+      {e.caption&&<figcaption>{e.caption}</figcaption>}
+      {manage&&<button className="icon-button danger example-remove" aria-label="移除這個範例" disabled={busy} onClick={()=>remove(e)}><Trash2 size={14}/></button>}
+    </figure>)}</div>}
+    {videos.length>0&&<div className="example-videos">{videos.map(e=><figure key={e.id??e.path}>
+      <video controls preload="metadata" playsInline src={exampleUrl(storage!,e.path!)}/>
       {e.caption&&<figcaption>{e.caption}</figcaption>}
       {manage&&<button className="icon-button danger example-remove" aria-label="移除這個範例" disabled={busy} onClick={()=>remove(e)}><Trash2 size={14}/></button>}
     </figure>)}</div>}
@@ -140,7 +146,7 @@ export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:
           {manage&&<button className="icon-button danger" aria-label="移除這個範例" disabled={busy} onClick={()=>remove(e)}><Trash2 size={14}/></button>}
         </details>)}</div>}
     {manage&&items.length<6&&<div className="example-add">
-      <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json" hidden
+      <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json" hidden
         onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void run(uploadExample(prompt.id,f,caption),'範例已加入');}}/>
       <input className="example-caption" placeholder="說明（選填）" maxLength={200} value={caption} onChange={e=>setCaption(e.target.value)}/>
       <Button variant="outline" size="sm" disabled={busy} onClick={()=>input.current?.click()}>{busy?<LoaderCircle size={15} className="spin"/>:<ImagePlus size={15}/>}加圖片或檔案</Button>

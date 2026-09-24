@@ -70,6 +70,7 @@ export const exampleUrl=(base:string,path:string)=>`${base}/storage/v1/object/pu
 /** What a prompt can produce: a picture, a file to download, or the text answer itself. */
 export const exampleTypes:Record<string,{ext:string;label:string}>={
  'image/jpeg':{ext:'jpg',label:'圖片'},'image/png':{ext:'png',label:'圖片'},'image/webp':{ext:'webp',label:'圖片'},
+ 'video/mp4':{ext:'mp4',label:'影片'},'video/webm':{ext:'webm',label:'影片'},
  'application/pdf':{ext:'pdf',label:'PDF'},
  'application/vnd.openxmlformats-officedocument.wordprocessingml.document':{ext:'docx',label:'Word'},
  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':{ext:'xlsx',label:'Excel'},
@@ -79,13 +80,14 @@ export const exampleTypes:Record<string,{ext:string;label:string}>={
 const byExtension:Record<string,string>={pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
  xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
  pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',
- txt:'text/plain',md:'text/markdown',csv:'text/csv',json:'application/json'};
+ txt:'text/plain',md:'text/markdown',csv:'text/csv',json:'application/json',mp4:'video/mp4',webm:'video/webm'};
 /** Browsers leave .md and a few others without a type, so fall back to the extension. */
 export function exampleKind(file:File){
  const ext=(file.name.split('.').pop()??'').toLowerCase();
  const mime=exampleTypes[file.type]?file.type:byExtension[ext];
- if(!mime)throw new Error('支援圖片（JPG／PNG／WebP）、PDF、Word、Excel、PowerPoint、txt、md、csv、json');
- return {mime,ext:exampleTypes[mime].ext,label:exampleTypes[mime].label,image:mime.startsWith('image/')};
+ if(!mime)throw new Error('支援圖片（JPG／PNG／WebP）、影片（MP4／WebM）、PDF、Word、Excel、PowerPoint、txt、md、csv、json');
+ return {mime,ext:exampleTypes[mime].ext,label:exampleTypes[mime].label,
+  image:mime.startsWith('image/'),video:mime.startsWith('video/')};
 }
 /** Downscale in the browser so a phone photo or 4K render stays a small upload. */
 export async function shrinkImage(file:File,max=1600,quality=0.82):Promise<{blob:Blob;type:string}>{
@@ -124,13 +126,15 @@ export class CloudStore {
   let body:Blob=file,ext=kind.ext,mime=kind.mime;
   if(kind.image){const small=await shrinkImage(file);body=small.blob;mime=small.type;ext=small.type==='image/png'?'png':'jpg';
    if(body.size>3*1024*1024)throw new Error('圖片太大，請改用 3 MB 以內的圖片');}
+  // 影片沒辦法在瀏覽器裡壓縮，所以直接給比較寬的上限
+  else if(kind.video){if(body.size>25*1024*1024)throw new Error('影片太大，請改用 25 MB 以內的影片');}
   else if(body.size>10*1024*1024)throw new Error('檔案太大，請改用 10 MB 以內的檔案');
   const path=`${id}/${crypto.randomUUID()}.${ext}`;
   const response=await this.transport(`${this.config.url}/storage/v1/object/prompt-examples/${path}`,
    {method:'POST',headers:{apikey:this.config.key,'Content-Type':mime,'x-upsert':'false',
      ...(this.config.key.startsWith('eyJ')?{Authorization:'Bearer '+this.config.key}:{})},body});
   if(!response.ok){const detail=await response.text().catch(()=>'');throw new Error('上傳失敗'+(detail?'：'+detail.slice(0,200):`（${response.status}）`));}
-  const entry={kind:kind.image?'image':'file',path,name:file.name.slice(0,120),mime,size:body.size,caption:caption.slice(0,200)};
+  const entry={kind:kind.image?'image':kind.video?'video':'file',path,name:file.name.slice(0,120),mime,size:body.size,caption:caption.slice(0,200)};
   const card=await this.rpc({op:'example_add',id,entry});this.invalidate();return card as CardPrompt;
  }
  /** A text answer needs no upload; it is stored with the prompt. */

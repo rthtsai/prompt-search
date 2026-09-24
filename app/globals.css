@@ -130,3 +130,10 @@
 .auto-chip{margin-left:6px;font-size:9px;color:#6f8470;background:#eef4ea;border:1px solid #dde8d7;border-radius:999px;padding:1px 7px}
 .review-description .text-link,.editor-form label .text-link{margin-top:6px;font-size:10px;gap:4px}
 .editor-form label .text-link{display:inline-flex;align-items:center;background:none;color:#5d7f5f}
+
+/* 範例影片：和圖片格一樣的外框，但讓播放器自己撐滿寬度 */
+.example-videos{display:grid;gap:14px;margin-top:12px}
+.example-videos figure{position:relative;margin:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#000}
+.example-videos video{display:block;width:100%;max-height:460px;background:#000}
+.example-videos figcaption{padding:9px 12px;font-size:13px;color:var(--ink-soft);background:var(--surface)}
+.example-videos .example-remove{position:absolute;top:8px;right:8px}

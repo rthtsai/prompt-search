@@ -137,3 +137,13 @@
 .example-videos video{display:block;width:100%;max-height:460px;background:#000}
 .example-videos figcaption{padding:9px 12px;font-size:13px;color:var(--ink-soft);background:var(--surface)}
 .example-videos .example-remove{position:absolute;top:8px;right:8px}
+
+/* 首頁的練功房入口：不做成第十四個分類磚，而是一條自己的橫幅 */
+.lesson-banner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:26px;align-items:center;
+  margin:26px 0 8px;padding:22px 24px;border:1px solid var(--line);border-radius:18px;background:var(--surface)}
+.lesson-copy h2{margin:8px 0 6px;font-size:23px;line-height:1.35}
+.lesson-copy p{margin:0 0 16px;color:var(--ink-soft);font-size:14px;line-height:1.7;max-width:46ch}
+.lesson-tag{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;letter-spacing:.06em;
+  background:var(--accent-soft,#e7efe9);color:var(--accent,#24584b)}
+.lesson-clip{width:100%;border-radius:12px;background:#000;display:block}
+@media (max-width:860px){.lesson-banner{grid-template-columns:1fr}}

@@ -16,7 +16,10 @@
     "dev": "next dev --webpack --hostname 127.0.0.1",
     "build": "next build --webpack",
     "start": "next start --hostname 127.0.0.1",
-    "pages:build": "node scripts/build-pages.mjs"
+    "pages:build": "node scripts/build-pages.mjs",
+    "pages:build:class": "node scripts/build-class.mjs",
+    "class:setup": "node scripts/class-setup.mjs",
+    "verify:original": "node scripts/verify-original.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",

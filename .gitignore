@@ -10,3 +10,6 @@ coverage/
 !.env.example
 pages-demo/out/
 pages-demo/public/
+.env.class
+pages-demo/out-class/
+pages-demo/.next-class/

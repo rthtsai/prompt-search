@@ -1,4 +1,5 @@
 import {CATEGORIES,type Variable} from '../domain.ts';
+import {withDescription} from './describe.ts';
 import {parseInput} from '../parser.ts';
 import {organizeBrowser,searchBrowser} from './browser-store.ts';
 import {type CardPrompt,type ImportJob,mergeVariables} from './types.ts';
@@ -57,13 +58,13 @@ export function groupVersions(all:CardPrompt[]):CardPrompt[]{
  });
 }
 type CloudCategory={name:string;fixed?:boolean};
-export function draftItem(input:{title:string;body:string;body_en?:string|null;summary:string;category:string;variables?:Variable[];version_note?:string},previous:Variable[]=[]):CardPrompt{
+export function draftItem(input:{title:string;body:string;body_en?:string|null;summary:string;summary_auto?:boolean;category:string;variables?:Variable[];version_note?:string},previous:Variable[]=[]):CardPrompt{
  const body=String(input.body??''),en=typeof input.body_en==='string'&&input.body_en.trim()?input.body_en:null;
  if(body.trim().length<20)throw new Error('Prompt 內容至少 20 字');
  if(en&&en.trim().length<20)throw new Error('英文版本至少 20 字，或留空');
  const p=organizeBrowser(body.replace(/\{\{[^{}]+\}\}/g,'X'),'共用辭典');
- return {...p,body,body_en:en,title:String(input.title??'').trim()||p.title,summary:String(input.summary??'').trim(),category:input.category,
-  variables:mergeVariables([body,en],input.variables??[],previous),version_note:String(input.version_note??'').slice(0,200)};
+ return withDescription({...p,body,body_en:en,title:String(input.title??'').trim()||p.title,summary:String(input.summary??'').trim(),summary_auto:input.summary_auto,category:input.category,
+  variables:mergeVariables([body,en],input.variables??[],previous),version_note:String(input.version_note??'').slice(0,200)});
 }
 export const exampleUrl=(base:string,path:string)=>`${base}/storage/v1/object/public/prompt-examples/${path}`;
 /** What a prompt can produce: a picture, a file to download, or the text answer itself. */
@@ -174,12 +175,17 @@ export class CloudStore {
    const parsed=parseInput(input.text,input.source),items:CardPrompt[]=[],errors:ImportJob['errors']=[],seen=new Set<string>();let skipped=0;
    let restored:any[]|undefined;try{const value=JSON.parse(input.text);if(value.version&&Array.isArray(value.prompts))restored=value.prompts;}catch{/* Plain text import. */}
    if(restored&&restored.length!==parsed.length)throw new Error('備份含有無法匯入的項目，請保留原始備份並檢查');
-   parsed.forEach((p,index)=>{try{const card=restored?legacyCard(restored[index]):organizeBrowser(p.body,p.source),key=equivalent(card.body);if(seen.has(key)){skipped++;return;}seen.add(key);items.push(card);}catch(e){errors.push({index,message:(e as Error).message});}});
+   parsed.forEach((p,index)=>{try{const card=withDescription(restored?legacyCard(restored[index]):organizeBrowser(p.body,p.source)),key=equivalent(card.body);if(seen.has(key)){skipped++;return;}seen.add(key);items.push(card);}catch(e){errors.push({index,message:(e as Error).message});}});
    const job:ImportJob={id:crypto.randomUUID(),status:'review',done:parsed.length,total:parsed.length,items,duplicates:0,skipped,errors};this.jobs.set(job.id,job);return job as T;
   }
   if(url.pathname.startsWith('/api/imports/')){
    const job=this.jobs.get(url.pathname.split('/').at(-1)!);if(!job)throw new Error('整理視窗已重開，請重新貼上或匯入');
-   if(options.method==='POST'&&job.status!=='accepted'){await uploadBatches(job.items,this.rpc);job.status='accepted';this.invalidate();}return job as T;
+   if(options.method==='POST'&&job.status!=='accepted'){
+    // 畫面上改過的說明要送回來，只覆蓋說明，其餘仍以整理結果為準。
+    const edits:CardPrompt[]=Array.isArray(input.items)?input.items:[];
+    const items=job.items.map(p=>{const e=edits.find(x=>x?.id===p.id);
+     return e?{...p,summary:String(e.summary??p.summary).slice(0,2000),summary_auto:!!e.summary_auto}:p;});
+    await uploadBatches(items,this.rpc);job.items=items;job.status='accepted';this.invalidate();}return job as T;
   }
   if(url.pathname.startsWith('/api/prompts/')){
    const id=url.pathname.split('/').at(-1)!;

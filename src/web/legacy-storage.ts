@@ -19,7 +19,7 @@ export function legacyCard(value:unknown):CardPrompt {
  if(typeof body!=='string')throw new Error('本機 Prompt 缺少內容');
  const card=organizeBrowser(body,typeof v.source==='string'?v.source:'本機資料遷移');
  if(typeof v.title==='string'&&v.title.trim())card.title=v.title;
- if(typeof v.summary==='string'&&v.summary.trim())card.summary=v.summary;
+ if(typeof v.summary==='string'&&v.summary.trim()){card.summary=v.summary;card.summary_auto=false;}
  if(CATEGORIES.includes(v.category))card.category=v.category;
  if(Array.isArray(v.tags))card.tags=v.tags;
  if(Array.isArray(v.model_hint))card.model_hint=v.model_hint;

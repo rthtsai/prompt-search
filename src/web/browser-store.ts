@@ -1,6 +1,7 @@
 import definitions from '../../fixtures/prompts.json' with {type:'json'};
 import {CATEGORIES,validateExtracted,type Extracted} from '../domain.ts';
 import {normalize,rewrite,snippet} from '../text-shared.ts';
+import {describe} from './describe.ts';
 import {parseInput} from '../parser.ts';
 import {fillTemplate,type CardPrompt,type Library,type ImportJob} from './types.ts';
 
@@ -19,8 +20,8 @@ export function organizeBrowser(input:string,source:string):CardPrompt {
   }
   for(const m of body.matchAll(/\{\{([^{}]+)\}\}/g))if(!variables.some(v=>v.name===m[1]))variables.push({name:m[1],label:m[1],example:'',required:true});
   const q=rewrite(input),title=input.split('\n')[0].replace(/^#+\s*/,'').slice(0,60);
-  const extracted:Extracted={title,body,summary:input.replace(/\s+/g,' ').slice(0,100),use_case:title,category:(q.categories[0]??'其他') as Extracted['category'],tags:q.tags,model_hint:q.models,lang:'zh-Hant',variables};validateExtracted(extracted);
-  return {...extracted,id:crypto.randomUUID(),source,fork_of:null,use_count:0,last_used:null,updated_at:new Date().toISOString()};
+  const extracted:Extracted={title,body,summary:describe(body,{title,variables})||input.replace(/\s+/g,' ').slice(0,100),use_case:title,category:(q.categories[0]??'其他') as Extracted['category'],tags:q.tags,model_hint:q.models,lang:'zh-Hant',variables};validateExtracted(extracted);
+  return {...extracted,summary_auto:true,id:crypto.randomUUID(),source,fork_of:null,use_count:0,last_used:null,updated_at:new Date().toISOString()};
 }
 export function searchBrowser(prompts:CardPrompt[],query:string):CardPrompt[]{
   const q=rewrite(query);return prompts.map(p=>{const haystack=[p.title,p.summary,p.body,p.body_en??'',p.tags.join(' '),p.model_hint.join(' ')].join('\n').toLowerCase();let score=q.terms.reduce((n,t)=>n+(haystack.includes(t)?t.length:0)+(p.title.toLowerCase().includes(t)?t.length:0),0);if(q.recent&&p.last_used)score*=1.25;return {p,score};}).filter(p=>p.score>0).sort((a,b)=>b.score-a.score).slice(0,10).map(({p})=>({...p,highlight:snippet(p.body,q.terms)}));

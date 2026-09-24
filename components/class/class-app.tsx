@@ -2,12 +2,15 @@
 // 班級版（ai-class-lab）的進入點。只有 pages:build:class 會把它接上，
 // 原版 prompt-search 的建置完全不會碰到這個檔案。
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import {BookOpen,LoaderCircle,LogIn,LogOut,ArrowRight,Clock3,RefreshCw} from 'lucide-react';
+import {BookOpen,LoaderCircle,LogIn,LogOut,ArrowRight,Clock3,RefreshCw,Star,Image as ImageIcon,
+  MessageSquareText,History} from 'lucide-react';
 import {Button} from '../ui/button';
 import '../../app/class.css';
 import {createClassSession} from '../../src/web/class-session';
-import {classStage,createClassRpc,fetchMe,joinClass,setNickname,
-  rememberClass,rememberedClass,type Me,type Stage} from '../../src/web/class-store';
+import {classStage,createClassRpc,fetchMe,joinClass,setNickname,listPrompts,listTasks,
+  visibleScopes,coverOf,rememberClass,rememberedClass,
+  type Me,type Stage,type ClassCard,type ClassTask,type Filter,type ClassMembership,
+  type ClassRpc} from '../../src/web/class-store';
 
 const CONFIG={url:process.env.NEXT_PUBLIC_SUPABASE_URL??'',key:process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY??''};
 const SITE=(process.env.NEXT_PUBLIC_BASE_PATH??'')+'/';
@@ -80,15 +83,13 @@ export default function ClassApp() {
       {stage.kind==='nickname'&&<NicknameForm busy={busy} className={stage.membership.name}
         onSave={nick=>run(()=>setNickname(rpc,stage.membership.class_id,nick))}/>}
 
-      {stage.kind==='ready'&&<section className="prompts-section">
-        <div className="empty-state"><span className="empty-icon"><BookOpen size={28}/></span>
-          <h3>{stage.membership.nickname}，準備好了</h3>
-          <p>列表、任務與比較頁施工中（9/26–9/27）。</p>
-          {stage.others.length>0&&<div className="class-switch">
-            {stage.others.map(c=><button key={c.class_id} className="text-link"
-              onClick={()=>choose(c.class_id)}>切換到 {c.name}<ArrowRight size={13}/></button>)}
-          </div>}
-        </div></section>}
+      {stage.kind==='ready'&&<>
+        {stage.others.length>0&&<div className="class-switch">
+          {stage.others.map(c=><button key={c.class_id} className="text-link"
+            onClick={()=>choose(c.class_id)}>切換到 {c.name}<ArrowRight size={13}/></button>)}
+        </div>}
+        <ClassList rpc={rpc} membership={stage.membership}/>
+      </>}
     </main>
   </div>;
 }
@@ -131,5 +132,66 @@ function NicknameForm({busy,className,onSave}:{busy:boolean;className:string;onS
       <Button className="class-big" type="submit" disabled={busy||length<2}>
         {busy?'儲存中…':'開始使用'}<ArrowRight size={18}/></Button>
     </form>
+  </section>;
+}
+
+function ClassList({rpc,membership}:{rpc:ClassRpc;membership:ClassMembership}) {
+  const [filter,setFilter]=useState<Filter>({scope:'class',taskId:null});
+  const [cards,setCards]=useState<ClassCard[]|null>(null);
+  const [tasks,setTasks]=useState<ClassTask[]>([]);
+  const [error,setError]=useState('');
+  const scopes=visibleScopes(membership);
+
+  useEffect(()=>{listTasks(rpc,membership.class_id).then(setTasks).catch(()=>{});},[rpc,membership.class_id]);
+  useEffect(()=>{
+    // 切換班級時先清空，免得短暫看到別班的內容
+    let live=true;setCards(null);setError('');
+    listPrompts(rpc,membership.class_id,filter)
+      .then(rows=>{if(live)setCards(rows);})
+      .catch(e=>{if(live)setError((e as Error).message);});
+    return ()=>{live=false;};
+  },[rpc,membership.class_id,filter]);
+
+  return <section className="prompts-section">
+    <div className="class-filters">
+      <div className="scope-tabs" role="tablist" aria-label="篩選範圍">
+        {scopes.map(s=><button key={s.key} role="tab" aria-selected={filter.scope===s.key}
+          className={filter.scope===s.key?'active':''}
+          onClick={()=>setFilter(f=>({...f,scope:s.key}))}>{s.label}</button>)}
+      </div>
+      {tasks.length>0&&<label className="task-picker">任務
+        <select value={filter.taskId??''} onChange={e=>setFilter(f=>({...f,taskId:e.target.value||null}))}>
+          <option value="">全部任務</option>
+          {tasks.map(t=><option key={t.id} value={t.id}>{t.title}{t.closed?'（已截止）':''}</option>)}
+        </select></label>}
+    </div>
+
+    {error&&<div className="class-error" role="alert">{error}</div>}
+    {cards===null&&!error&&<div className="empty-state"><span className="empty-icon">
+      <LoaderCircle size={26} className="spin"/></span><h3>載入中</h3></div>}
+    {cards?.length===0&&<div className="empty-state"><span className="empty-icon"><BookOpen size={26}/></span>
+      <h3>{filter.scope==='mine'?'你還沒有存過 Prompt':'這裡還沒有東西'}</h3>
+      <p>{filter.scope==='mine'?'寫好一個之後存起來，就會出現在這裡。':'等同學開始上傳就會看到。'}</p></div>}
+
+    {!!cards?.length&&<div className="class-grid">{cards.map(c=>{
+      const cover=coverOf(c);
+      const texts=c.outputs.filter(o=>o.kind==='text').length;
+      const images=c.outputs.filter(o=>o.kind==='image').length;
+      return <article className="class-card" key={c.id}>
+        {cover&&<img className="class-cover" src={cover} alt="" loading="lazy"/>}
+        <div className="class-card-top">
+          <span className="class-author">{c.author??'（未命名）'}</span>
+          {c.team&&<span className="class-team">{c.team}</span>}
+          {c.featured&&<span className="class-star" title="老師精選"><Star size={13}/></span>}
+        </div>
+        <h3>{c.title}</h3>
+        <p>{c.summary}</p>
+        <div className="class-card-bottom">
+          {c.version_no>1&&<span><History size={12}/>V{c.version_no}</span>}
+          {images>0&&<span><ImageIcon size={12}/>{images}</span>}
+          {texts>0&&<span><MessageSquareText size={12}/>{texts}</span>}
+          <span className="class-vars">{c.variables.length?`${c.variables.length} 個變數`:'直接使用'}</span>
+        </div>
+      </article>;})}</div>}
   </section>;
 }

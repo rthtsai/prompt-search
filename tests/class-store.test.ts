@@ -76,3 +76,39 @@ test('每次呼叫都帶 JWT；沒登入就不送出請求', async () => {
     {...session,token:async()=>null},transport);
   await assert.rejects(()=>anonymous({op:'me'}),/請先登入/);
 });
+
+import {visibleScopes,listRequest,coverOf,listPrompts,listTasks,
+  type ClassCard} from '../src/web/class-store.ts';
+
+const card=(over:Partial<ClassCard>={}):ClassCard=>({
+  id:'p1',title:'出題',body:'內容',summary:'說明',category:'其他',tags:[],variables:[],
+  model_hint:[],use_count:0,last_used:null,source:'',fork_of:null,
+  updated_at:'',created_at:'',group_id:'p1',version_no:1,version_note:'',
+  task_id:null,featured:false,member_id:'m1',author:'小海',team:'第二組',outputs:[],...over});
+
+test('沒分組的人不顯示「本組」分頁，不然會永遠空白', () => {
+  assert.deepEqual(visibleScopes({team_id:null}).map(s=>s.key),['mine','class','featured']);
+  assert.deepEqual(visibleScopes({team_id:'t1'}).map(s=>s.key),['mine','team','class','featured']);
+});
+
+test('列表請求一律帶 class_id；沒選任務就不送 task_id', () => {
+  assert.deepEqual(listRequest('c1',{scope:'mine',taskId:null}),
+    {op:'list',class_id:'c1',scope:'mine'});
+  assert.deepEqual(listRequest('c1',{scope:'class',taskId:'t9'}),
+    {op:'list',class_id:'c1',scope:'class',task_id:'t9'});
+});
+
+test('封面取圖片輸出的縮圖，只有文字輸出就沒有封面', () => {
+  assert.equal(coverOf(card()),null);
+  assert.equal(coverOf(card({outputs:[{id:'o1',kind:'text',text_body:'答案',member_id:'m1',created_at:''}]})),null);
+  assert.equal(coverOf(card({outputs:[
+    {id:'o1',kind:'text',text_body:'答案',member_id:'m1',created_at:''},
+    {id:'o2',kind:'image',image_thumb:'data:image/jpeg;base64,AAA',member_id:'m1',created_at:''}]})),
+    'data:image/jpeg;base64,AAA');
+});
+
+test('列表與任務在伺服器回傳非陣列時不會炸掉', async () => {
+  assert.deepEqual(await listPrompts(async()=>null,'c1',{scope:'mine',taskId:null}),[]);
+  assert.deepEqual(await listTasks(async()=>({error:'x'}),'c1'),[]);
+  assert.equal((await listPrompts(async()=>[card()],'c1',{scope:'mine',taskId:null})).length,1);
+});

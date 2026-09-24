@@ -1,3 +1,4 @@
+import type {Variable} from '../domain.ts';
 // 班級版（ai-class-lab）的前端客戶端。原版 prompt-search 完全不會載入這個檔案。
 // 身分抽成 ClassSession 介面：現在可以塞假的 session 開發，接上 Supabase Auth 時只換這一層。
 
@@ -54,6 +55,41 @@ export function rememberedClass():string|null{
   try{ return localStorage.getItem(REMEMBERED); }catch{ return null; }
 }
 
+/** class_prompt_card 回傳的卡片；和原版的 CardPrompt 不同，多了作者、組別與輸出。 */
+export type ClassOutput={id:string;kind:'text'|'image';text_body?:string|null;
+  image_thumb?:string|null;member_id:string;created_at:string};
+export type ClassCard={id:string;title:string;body:string;summary:string;category:string;
+  tags:string[];variables:Variable[];model_hint:string[];use_count:number;last_used:string|null;
+  source:string;fork_of:string|null;updated_at:string;created_at:string;
+  group_id:string;version_no:number;version_note:string;
+  task_id:string|null;featured:boolean;member_id:string;
+  author:string|null;team:string|null;outputs:ClassOutput[]};
+export type ClassTask={id:string;title:string;closed:boolean};
+
+/** 列表的四個分頁。scope 決定伺服器回傳哪些卡片，任務下拉再篩一層。 */
+export type Scope='mine'|'team'|'class'|'featured';
+export type Filter={scope:Scope;taskId:string|null};
+
+export const SCOPES:{key:Scope;label:string}[]=[
+  {key:'mine',label:'我的'},{key:'team',label:'本組'},
+  {key:'class',label:'全班'},{key:'featured',label:'精選'}];
+
+/** 沒分組的人看不到「本組」，不然會得到一個永遠空白的分頁。 */
+export function visibleScopes(membership:{team_id:string|null}):typeof SCOPES{
+  return SCOPES.filter(s=>s.key!=='team'||membership.team_id!==null);
+}
+
+export function listRequest(classId:string,filter:Filter):Record<string,unknown>{
+  const request:Record<string,unknown>={op:'list',class_id:classId,scope:filter.scope};
+  if(filter.taskId)request.task_id=filter.taskId;
+  return request;
+}
+
+/** 卡片封面：先用圖片輸出的縮圖，沒有圖就不放封面。 */
+export function coverOf(card:ClassCard):string|null{
+  return card.outputs?.find(o=>o.kind==='image'&&o.image_thumb)?.image_thumb??null;
+}
+
 export type ClassConfig={url:string;key:string};
 export type ClassRpc=(request:Record<string,unknown>)=>Promise<unknown>;
 
@@ -95,6 +131,15 @@ export async function joinClass(rpc:ClassRpc,code:string){
   if(!clean)throw new Error('請輸入班級代碼');
   return await rpc({op:'join_request',class_code:clean}) as {class_id:string;status:MemberStatus;name?:string};
 }
+export async function listPrompts(rpc:ClassRpc,classId:string,filter:Filter):Promise<ClassCard[]>{
+  const rows=await rpc(listRequest(classId,filter));
+  return Array.isArray(rows)?rows as ClassCard[]:[];
+}
+export async function listTasks(rpc:ClassRpc,classId:string):Promise<ClassTask[]>{
+  const rows=await rpc({op:'task_list',class_id:classId});
+  return Array.isArray(rows)?rows as ClassTask[]:[];
+}
+
 export async function setNickname(rpc:ClassRpc,classId:string,nickname:string){
   const clean=nickname.trim();
   if([...clean].length<2||[...clean].length>12)throw new Error('暱稱請填 2 到 12 個字');

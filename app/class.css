@@ -26,9 +26,14 @@
 .task-picker{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-soft)}
 .task-picker select{padding:9px 12px;border:1px solid var(--line);border-radius:10px;
   background:var(--surface);font-size:14px;min-height:40px;max-width:210px}
+.class-new{margin-left:auto;min-height:40px}
 .class-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
-.class-card{display:flex;flex-direction:column;gap:7px;padding:14px;border:1px solid var(--line);
-  border-radius:14px;background:var(--surface)}
+.class-card{position:relative;display:flex;flex-direction:column;gap:7px;padding:14px;
+  border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+/* 整張卡片可點，但不把內容包進 <button> 裡，免得標題和圖片的語意被吃掉 */
+.class-card-open{position:absolute;inset:0;z-index:1;border:0;border-radius:14px;
+  background:transparent;cursor:pointer}
+.class-card-open:focus-visible{outline:2px solid var(--accent,#24584b);outline-offset:2px}
 .class-cover{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;background:#eee}
 .class-card-top{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-soft)}
 .class-author{font-weight:600;color:var(--ink)}
@@ -41,3 +46,40 @@
 .class-card-bottom span{display:inline-flex;align-items:center;gap:4px}
 .class-vars{margin-left:auto}
 @media (max-width:520px){.class-grid{grid-template-columns:1fr}}
+
+/* 編輯頁：一次只做一件事，所以佔滿整頁而不是開對話框——iPad 上對話框會被鍵盤蓋住 */
+.class-editor{display:grid;gap:22px}
+.class-editor-bar{display:flex;align-items:center;gap:12px}
+.class-version{padding:2px 9px;border-radius:999px;background:var(--accent-soft,#e7efe9);font-size:12px}
+.class-readonly{margin-left:auto;font-size:13px;color:var(--ink-soft)}
+.class-form{display:grid;gap:18px;border:0;padding:0;margin:0;min-width:0}
+.class-form[disabled]{opacity:.75}
+.class-field{display:grid;gap:7px;min-width:0}
+.class-field>span{font-size:14px;font-weight:600}
+.class-field>span em{font-style:normal;font-weight:400;color:var(--ink-soft)}
+.class-field input,.class-field textarea,.class-field select{width:100%;padding:13px 14px;
+  font:inherit;font-size:16px;line-height:1.7;border:1px solid var(--line);border-radius:12px;
+  background:var(--surface);color:inherit}
+.class-field textarea{resize:vertical;min-height:120px}
+.class-two-up{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.class-vars-edit{display:grid;gap:8px}
+.class-var-row{display:flex;align-items:center;gap:10px}
+.class-var-row code{flex:0 0 auto;padding:6px 10px;border-radius:9px;font-size:13px;
+  background:var(--accent-soft,#e7efe9)}
+.class-var-row input{flex:1 1 auto;min-width:0}
+.class-note-field{padding:14px;border:1px solid var(--accent,#24584b);border-radius:14px}
+.class-actions{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+
+.class-outputs{display:grid;gap:12px;padding-top:20px;border-top:1px solid var(--line)}
+.class-outputs h2{margin:0;font-size:17px}
+.class-outputs p{margin:0}
+.class-output-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.class-output{display:flex;gap:12px;align-items:flex-start;padding:12px;
+  border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.class-output p{margin:0;flex:1 1 auto;font-size:14px;line-height:1.75;white-space:pre-wrap}
+.class-output img{flex:0 0 auto;width:120px;aspect-ratio:4/3;object-fit:cover;border-radius:9px}
+.class-output button{margin-left:auto;color:var(--ink-soft)}
+/* 這句話不是提示，是規定，所以一直都在，不是出錯才出現 */
+.class-warning{display:flex;align-items:center;gap:8px;padding:11px 13px;border-radius:12px;
+  background:#fdf6e7;border:1px solid #e6d3a6;font-size:14px}
+@media (max-width:560px){.class-two-up{grid-template-columns:1fr}}

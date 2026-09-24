@@ -85,9 +85,24 @@ export function listRequest(classId:string,filter:Filter):Record<string,unknown>
   return request;
 }
 
+/**
+ * 是不是自己寫的。卡片只帶得到作者的暱稱（member_id 是 membership 的主鍵，前端沒有），
+ * 而暱稱在一個班裡有唯一索引，所以拿它比對是準的。
+ * 伺服器仍會自己驗一次 member_id，這裡只是決定畫面要不要給編輯。
+ */
+export function isMine(card:{author:string|null},membership:{nickname:string|null}):boolean{
+  return membership.nickname!==null&&card.author===membership.nickname;
+}
+
+/** 資料庫存的是沒有前綴的 base64（CHECK 擋 /9j/ 開頭），要加回前綴才能餵給 <img>。 */
+export function asDataUrl(value:string|null|undefined):string|null{
+  if(!value)return null;
+  return value.startsWith('data:')?value:`data:image/jpeg;base64,${value}`;
+}
+
 /** 卡片封面：先用圖片輸出的縮圖，沒有圖就不放封面。 */
 export function coverOf(card:ClassCard):string|null{
-  return card.outputs?.find(o=>o.kind==='image'&&o.image_thumb)?.image_thumb??null;
+  return asDataUrl(card.outputs?.find(o=>o.kind==='image'&&o.image_thumb)?.image_thumb);
 }
 
 export type ClassConfig={url:string;key:string};
@@ -133,6 +148,14 @@ export async function joinClass(rpc:ClassRpc,code:string){
 }
 export async function listPrompts(rpc:ClassRpc,classId:string,filter:Filter):Promise<ClassCard[]>{
   const rows=await rpc(listRequest(classId,filter));
+  return Array.isArray(rows)?rows as ClassCard[]:[];
+}
+/**
+ * 列表為了省流量只帶圖片輸出（class_prompt_card 的 with_outputs 預設是 false），
+ * 所以打開一筆來編輯時要重新拿完整的版本串，不然文字結果會看起來不見了。
+ */
+export async function fetchVersions(rpc:ClassRpc,classId:string,groupId:string):Promise<ClassCard[]>{
+  const rows=await rpc({op:'get',class_id:classId,group_id:groupId});
   return Array.isArray(rows)?rows as ClassCard[]:[];
 }
 export async function listTasks(rpc:ClassRpc,classId:string):Promise<ClassTask[]>{

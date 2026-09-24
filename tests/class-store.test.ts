@@ -107,6 +107,12 @@ test('封面取圖片輸出的縮圖，只有文字輸出就沒有封面', () =>
     'data:image/jpeg;base64,AAA');
 });
 
+test('資料庫存的是裸 base64，封面要自己補回 data: 前綴', () => {
+  assert.equal(coverOf(card({outputs:[
+    {id:'o1',kind:'image',image_thumb:'/9j/4AAQ',member_id:'m1',created_at:''}]})),
+    'data:image/jpeg;base64,/9j/4AAQ');
+});
+
 test('列表與任務在伺服器回傳非陣列時不會炸掉', async () => {
   assert.deepEqual(await listPrompts(async()=>null,'c1',{scope:'mine',taskId:null}),[]);
   assert.deepEqual(await listTasks(async()=>({error:'x'}),'c1'),[]);

@@ -3,10 +3,11 @@
 // 原版 prompt-search 的建置完全不會碰到這個檔案。
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {BookOpen,LoaderCircle,LogIn,LogOut,ArrowRight,Clock3,RefreshCw,Star,Image as ImageIcon,
-  MessageSquareText,History} from 'lucide-react';
+  MessageSquareText,History,Plus} from 'lucide-react';
 import {Button} from '../ui/button';
 import '../../app/class.css';
 import {createClassSession} from '../../src/web/class-session';
+import ClassEditor from './class-editor';
 import {classStage,createClassRpc,fetchMe,joinClass,setNickname,listPrompts,listTasks,
   visibleScopes,coverOf,rememberClass,rememberedClass,
   type Me,type Stage,type ClassCard,type ClassTask,type Filter,type ClassMembership,
@@ -140,6 +141,8 @@ function ClassList({rpc,membership}:{rpc:ClassRpc;membership:ClassMembership}) {
   const [cards,setCards]=useState<ClassCard[]|null>(null);
   const [tasks,setTasks]=useState<ClassTask[]>([]);
   const [error,setError]=useState('');
+  const [editing,setEditing]=useState<{card:ClassCard|null}|null>(null);
+  const [reload,setReload]=useState(0);
   const scopes=visibleScopes(membership);
 
   useEffect(()=>{listTasks(rpc,membership.class_id).then(setTasks).catch(()=>{});},[rpc,membership.class_id]);
@@ -150,7 +153,11 @@ function ClassList({rpc,membership}:{rpc:ClassRpc;membership:ClassMembership}) {
       .then(rows=>{if(live)setCards(rows);})
       .catch(e=>{if(live)setError((e as Error).message);});
     return ()=>{live=false;};
-  },[rpc,membership.class_id,filter]);
+  },[rpc,membership.class_id,filter,reload]);
+
+  if(editing)return <ClassEditor rpc={rpc} membership={membership} tasks={tasks}
+    card={editing.card} defaultTaskId={filter.taskId}
+    onClose={changed=>{setEditing(null);if(changed)setReload(n=>n+1);}}/>;
 
   return <section className="prompts-section">
     <div className="class-filters">
@@ -164,6 +171,7 @@ function ClassList({rpc,membership}:{rpc:ClassRpc;membership:ClassMembership}) {
           <option value="">全部任務</option>
           {tasks.map(t=><option key={t.id} value={t.id}>{t.title}{t.closed?'（已截止）':''}</option>)}
         </select></label>}
+      <Button className="class-new" onClick={()=>setEditing({card:null})}><Plus size={18}/>寫一個</Button>
     </div>
 
     {error&&<div className="class-error" role="alert">{error}</div>}
@@ -171,13 +179,16 @@ function ClassList({rpc,membership}:{rpc:ClassRpc;membership:ClassMembership}) {
       <LoaderCircle size={26} className="spin"/></span><h3>載入中</h3></div>}
     {cards?.length===0&&<div className="empty-state"><span className="empty-icon"><BookOpen size={26}/></span>
       <h3>{filter.scope==='mine'?'你還沒有存過 Prompt':'這裡還沒有東西'}</h3>
-      <p>{filter.scope==='mine'?'寫好一個之後存起來，就會出現在這裡。':'等同學開始上傳就會看到。'}</p></div>}
+      <p>{filter.scope==='mine'?'寫好一個之後存起來，就會出現在這裡。':'等同學開始上傳就會看到。'}</p>
+      <Button onClick={()=>setEditing({card:null})}><Plus size={18}/>寫一個</Button></div>}
 
     {!!cards?.length&&<div className="class-grid">{cards.map(c=>{
       const cover=coverOf(c);
       const texts=c.outputs.filter(o=>o.kind==='text').length;
       const images=c.outputs.filter(o=>o.kind==='image').length;
       return <article className="class-card" key={c.id}>
+        <button className="class-card-open" onClick={()=>setEditing({card:c})}
+          aria-label={`打開「${c.title}」`}/>
         {cover&&<img className="class-cover" src={cover} alt="" loading="lazy"/>}
         <div className="class-card-top">
           <span className="class-author">{c.author??'（未命名）'}</span>

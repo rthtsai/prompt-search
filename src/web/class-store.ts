@@ -168,3 +168,99 @@ export async function setNickname(rpc:ClassRpc,classId:string,nickname:string){
   if([...clean].length<2||[...clean].length>12)throw new Error('暱稱請填 2 到 12 個字');
   return await rpc({op:'set_nickname',class_id:classId,nickname:clean}) as {nickname:string};
 }
+
+// ------------------------------------------------------------------ 任務
+
+export type TaskDetail=ClassTask&{description:string;team_id:string|null;team:string|null;
+  created_at:string;handed_in:number};
+
+export async function fetchTasks(rpc:ClassRpc,classId:string):Promise<TaskDetail[]>{
+  const rows=await rpc({op:'task_list',class_id:classId});
+  return Array.isArray(rows)?rows as TaskDetail[]:[];
+}
+export async function createTask(rpc:ClassRpc,classId:string,
+    task:{title:string;description:string;teamId:string|null}){
+  const title=task.title.trim();
+  if(!title)throw new Error('任務要有一個題目');
+  if([...title].length>120)throw new Error('題目請控制在 120 字以內');
+  return await rpc({op:'task_create',class_id:classId,title,
+    description:task.description.trim().slice(0,2000),team_id:task.teamId}) as {id:string;title:string};
+}
+/** 伺服器只會把 closed_at 從 NULL 設成現在，關掉就是關掉，沒有再打開這回事。 */
+export async function closeTask(rpc:ClassRpc,classId:string,id:string){
+  return await rpc({op:'task_close',class_id:classId,id}) as {id:string;closed:boolean};
+}
+
+// ------------------------------------------------------------------ 比較
+
+export type CompareColumn={member_id:string;author:string|null;team:string|null;versions:ClassCard[]|null};
+export type CompareResult={task:{id:string;title:string;description:string};columns:CompareColumn[]};
+
+export async function fetchCompare(rpc:ClassRpc,classId:string,taskId:string):Promise<CompareResult>{
+  const raw=await rpc({op:'compare',class_id:classId,task_id:taskId}) as CompareResult;
+  return {task:raw.task,columns:(raw.columns??[]).map(c=>({...c,versions:c.versions??[]}))};
+}
+/** 每個人的版本數不一樣，所以比較表的列數看最多版本的那個人。 */
+export function compareDepth(result:CompareResult):number{
+  return Math.max(0,...result.columns.map(c=>c.versions?.length??0));
+}
+/** 同一列拿不同人的第 n 版；有人只寫了一版，後面的格子就是空的。 */
+export function versionAt(column:CompareColumn,index:number):ClassCard|null{
+  return column.versions?.[index]??null;
+}
+/**
+ * 「只看最新版」要的是每個人自己的最後一版，不是同一個列號——
+ * 照列號取的話，只寫了一版的人會整欄變空白。
+ */
+export function latestVersion(column:CompareColumn):ClassCard|null{
+  const list=column.versions??[];
+  return list.length?list[list.length-1]:null;
+}
+
+// ------------------------------------------------------------------ 教師台
+
+export type RosterMember={id:string;email:string;full_name:string|null;nickname:string|null;
+  role:Role;status:MemberStatus;team_id:string|null;joined_at:string;last_seen:string|null};
+export type RosterTeam={id:string;name:string};
+export type Roster={class:{id:string;name:string;code:string;max_members:number;archived:boolean};
+  teams:RosterTeam[];members:RosterMember[]};
+
+export async function fetchRoster(rpc:ClassRpc,classId:string):Promise<Roster>{
+  const raw=await rpc({op:'roster',class_id:classId}) as Roster;
+  return {class:raw.class,teams:raw.teams??[],members:raw.members??[]};
+}
+/** 等核可的排前面，因為那是老師唯一必須立刻處理的事。 */
+export function splitRoster(roster:Roster):{pending:RosterMember[];active:RosterMember[]}{
+  return {pending:roster.members.filter(m=>m.status==='pending'),
+    active:roster.members.filter(m=>m.status==='active')};
+}
+export function isStaff(membership:{role:Role}):boolean{
+  return membership.role==='teacher'||membership.role==='assistant';
+}
+
+export const memberOp=(op:'approve'|'reject'|'remove_member',rpc:ClassRpc,classId:string,memberId:string)=>
+  rpc({op,class_id:classId,member_id:memberId});
+export const assignTeam=(rpc:ClassRpc,classId:string,memberId:string,teamId:string|null)=>
+  rpc({op:'team_assign',class_id:classId,member_id:memberId,team_id:teamId});
+export const createTeam=(rpc:ClassRpc,classId:string,name:string)=>{
+  const clean=name.trim();
+  if(!clean)throw new Error('組別要有名字');
+  return rpc({op:'team_create',class_id:classId,name:clean}) as Promise<RosterTeam>;
+};
+export const renameTeam=(rpc:ClassRpc,classId:string,teamId:string,name:string)=>
+  rpc({op:'team_rename',class_id:classId,team_id:teamId,name:name.trim()}) as Promise<RosterTeam>;
+export const setRole=(rpc:ClassRpc,classId:string,memberId:string,role:Role)=>
+  rpc({op:'set_role',class_id:classId,member_id:memberId,role});
+export const rotateCode=(rpc:ClassRpc,classId:string)=>
+  rpc({op:'rotate_code',class_id:classId}) as Promise<{code:string}>;
+export const toggleFeatured=(rpc:ClassRpc,classId:string,id:string)=>
+  rpc({op:'feature',class_id:classId,id}) as Promise<{id:string;featured:boolean}>;
+export const exportClass=(rpc:ClassRpc,classId:string)=>
+  rpc({op:'export',class_id:classId}) as Promise<Record<string,unknown>>;
+
+/** 匯出的檔名帶上班名和日期，老師一學期會存很多份。 */
+export function exportFilename(className:string,when=new Date()):string{
+  const day=when.toISOString().slice(0,10);
+  const safe=className.replace(/[\\/:*?"<>|]/g,'').trim()||'class';
+  return `${safe}-${day}.json`;
+}

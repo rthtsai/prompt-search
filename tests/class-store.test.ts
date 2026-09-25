@@ -118,3 +118,69 @@ test('列表與任務在伺服器回傳非陣列時不會炸掉', async () => {
   assert.deepEqual(await listTasks(async()=>({error:'x'}),'c1'),[]);
   assert.equal((await listPrompts(async()=>[card()],'c1',{scope:'mine',taskId:null})).length,1);
 });
+
+import {compareDepth,versionAt,latestVersion,splitRoster,isStaff,exportFilename,createTask,createTeam,
+  fetchCompare,fetchRoster,type CompareResult,type Roster} from '../src/web/class-store.ts';
+
+const column=(author:string,versions:number)=>({member_id:'m-'+author,author,team:null,
+  versions:Array.from({length:versions},(_,i)=>card({id:author+i,version_no:i+1}))});
+
+test('比較表的列數看版本最多的人，別人缺的那一格是空的', () => {
+  const data={task:{id:'t1',title:'題',description:''},
+    columns:[column('小海',3),column('阿明',1)]} as unknown as CompareResult;
+  assert.equal(compareDepth(data),3);
+  assert.equal(versionAt(data.columns[0],2)?.version_no,3);
+  assert.equal(versionAt(data.columns[1],2),null);
+});
+
+test('沒有人交的任務不會讓比較頁算出負的列數', () => {
+  assert.equal(compareDepth({task:{id:'t',title:'',description:''},columns:[]}),0);
+});
+
+test('伺服器把 versions 回成 null 時當成空陣列，不是崩潰', async () => {
+  const result=await fetchCompare(async()=>({task:{id:'t',title:'題',description:''},
+    columns:[{member_id:'m1',author:'小海',team:null,versions:null}]}),'c1','t1');
+  assert.deepEqual(result.columns[0].versions,[]);
+  assert.equal(compareDepth(result),0);
+});
+
+test('名單先分出等核可的人，那是老師唯一得馬上處理的事', () => {
+  const roster={class:{id:'c1',name:'班',code:'ab12',max_members:40,archived:false},teams:[],
+    members:[{id:'m1',status:'pending'},{id:'m2',status:'active'},{id:'m3',status:'active'}]} as unknown as Roster;
+  const {pending,active}=splitRoster(roster);
+  assert.deepEqual(pending.map(m=>m.id),['m1']);
+  assert.equal(active.length,2);
+});
+
+test('教師台只給老師和助教', () => {
+  assert.ok(isStaff({role:'teacher'}));
+  assert.ok(isStaff({role:'assistant'}));
+  assert.ok(!isStaff({role:'student'}));
+});
+
+test('roster 缺欄位時補成空陣列，畫面才不會炸在老師面前', async () => {
+  const r=await fetchRoster(async()=>({class:{id:'c1',name:'班',code:'ab12',max_members:40,
+    archived:false}}),'c1');
+  assert.deepEqual(r.teams,[]);assert.deepEqual(r.members,[]);
+});
+
+test('匯出檔名帶班名和日期，且拿掉檔名不能用的字元', () => {
+  assert.equal(exportFilename('115 高一 AI 課',new Date('2026-10-02T03:00:00Z')),
+    '115 高一 AI 課-2026-10-02.json');
+  assert.equal(exportFilename('10/2 這班',new Date('2026-10-02T03:00:00Z')),'102 這班-2026-10-02.json');
+});
+
+test('空白的題目和組名根本不會送出去', async () => {
+  let called=false;const spy=async()=>{called=true;return {};};
+  await assert.rejects(()=>createTask(spy,'c1',{title:'  ',description:'',teamId:null}),/題目/);
+  await assert.rejects(async()=>createTeam(spy,'c1','   '),/名字/);
+  assert.equal(called,false);
+});
+
+test('「只看最新版」取的是每個人自己的最後一版，不是同一個列號', () => {
+  const data={task:{id:'t1',title:'題',description:''},
+    columns:[column('小海',3),column('阿明',1)]} as unknown as CompareResult;
+  assert.equal(latestVersion(data.columns[0])?.version_no,3);
+  assert.equal(latestVersion(data.columns[1])?.version_no,1);  // 照列號會是空的
+  assert.equal(latestVersion({member_id:'m',author:'x',team:null,versions:[]}),null);
+});

@@ -8,10 +8,13 @@ import {Button} from '../ui/button';
 import '../../app/class.css';
 import {createClassSession} from '../../src/web/class-session';
 import ClassEditor from './class-editor';
+import ClassTasks from './class-tasks';
+import ClassCompare from './class-compare';
+import ClassRoster from './class-roster';
 import {classStage,createClassRpc,fetchMe,joinClass,setNickname,listPrompts,listTasks,
-  visibleScopes,coverOf,rememberClass,rememberedClass,
+  visibleScopes,coverOf,rememberClass,rememberedClass,isStaff,
   type Me,type Stage,type ClassCard,type ClassTask,type Filter,type ClassMembership,
-  type ClassRpc} from '../../src/web/class-store';
+  type ClassRpc,type RosterTeam,type TaskDetail} from '../../src/web/class-store';
 
 const CONFIG={url:process.env.NEXT_PUBLIC_SUPABASE_URL??'',key:process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY??''};
 const SITE=(process.env.NEXT_PUBLIC_BASE_PATH??'')+'/';
@@ -89,7 +92,7 @@ export default function ClassApp() {
           {stage.others.map(c=><button key={c.class_id} className="text-link"
             onClick={()=>choose(c.class_id)}>切換到 {c.name}<ArrowRight size={13}/></button>)}
         </div>}
-        <ClassList rpc={rpc} membership={stage.membership}/>
+        <ClassHome rpc={rpc} membership={stage.membership}/>
       </>}
     </main>
   </div>;
@@ -136,7 +139,38 @@ function NicknameForm({busy,className,onSave}:{busy:boolean;className:string;onS
   </section>;
 }
 
-function ClassList({rpc,membership}:{rpc:ClassRpc;membership:ClassMembership}) {
+/** 三個分頁的殼。組別清單只有教師台拿得到，拿到之後借給任務頁用。 */
+function ClassHome({rpc,membership}:{rpc:ClassRpc;membership:ClassMembership}) {
+  const [view,setView]=useState<'list'|'tasks'|'roster'>('list');
+
+  const [comparing,setComparing]=useState<TaskDetail|null>(null);
+  const [writingTask,setWritingTask]=useState<string|null>(null);
+  const [teams,setTeams]=useState<RosterTeam[]>([]);
+  const staff=isStaff(membership);
+  type View='list'|'tasks'|'roster';
+  const tabs:{key:View;label:string}[]=[{key:'list',label:'Prompt'},{key:'tasks',label:'任務'},
+    ...(staff?[{key:'roster' as View,label:'教師台'}]:[])];
+
+  if(comparing)return <ClassCompare rpc={rpc} membership={membership} taskId={comparing.id}
+    onBack={()=>setComparing(null)}/>;
+
+  return <>
+    <nav className="class-nav" aria-label="班級功能">
+      {tabs.map(t=><button key={t.key} className={view===t.key?'active':''}
+        aria-current={view===t.key?'page':undefined}
+        onClick={()=>{setView(t.key);setWritingTask(null);}}>{t.label}</button>)}
+    </nav>
+    {view==='list'&&<ClassList rpc={rpc} membership={membership}
+      openTask={writingTask} onOpened={()=>setWritingTask(null)}/>}
+    {view==='tasks'&&<ClassTasks rpc={rpc} membership={membership} teams={teams}
+      onWrite={id=>{setWritingTask(id);setView('list');}}
+      onCompare={task=>setComparing(task)}/>}
+    {view==='roster'&&<ClassRoster rpc={rpc} membership={membership} onTeams={setTeams}/>}
+  </>;
+}
+
+function ClassList({rpc,membership,openTask,onOpened}:{rpc:ClassRpc;membership:ClassMembership;
+    openTask?:string|null;onOpened?:()=>void}) {
   const [filter,setFilter]=useState<Filter>({scope:'class',taskId:null});
   const [cards,setCards]=useState<ClassCard[]|null>(null);
   const [tasks,setTasks]=useState<ClassTask[]>([]);
@@ -154,6 +188,10 @@ function ClassList({rpc,membership}:{rpc:ClassRpc;membership:ClassMembership}) {
       .catch(e=>{if(live)setError((e as Error).message);});
     return ()=>{live=false;};
   },[rpc,membership.class_id,filter,reload]);
+
+  // 從任務頁按「我要寫」過來：直接開一張空白的，任務先選好
+  useEffect(()=>{if(openTask){setEditing({card:null});setFilter(f=>({...f,taskId:openTask}));onOpened?.();}},
+    [openTask,onOpened]);
 
   if(editing)return <ClassEditor rpc={rpc} membership={membership} tasks={tasks}
     card={editing.card} defaultTaskId={filter.taskId}

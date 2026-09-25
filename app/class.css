@@ -83,3 +83,63 @@
 .class-warning{display:flex;align-items:center;gap:8px;padding:11px 13px;border-radius:12px;
   background:#fdf6e7;border:1px solid #e6d3a6;font-size:14px}
 @media (max-width:560px){.class-two-up{grid-template-columns:1fr}}
+
+/* 分頁列：三個以內，所以直接並排，不做下拉 */
+.class-nav{display:flex;gap:4px;margin:0 0 18px;padding:4px;border-radius:12px;
+  background:var(--surface);border:1px solid var(--line)}
+.class-nav button{flex:1 1 0;padding:10px 14px;border:0;border-radius:9px;background:transparent;
+  font-size:15px;color:var(--ink-soft);cursor:pointer;min-height:44px}
+.class-nav button.active{background:var(--accent,#24584b);color:#fff}
+.class-section-head{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:22px 0 10px}
+.class-section-head:first-child{margin-top:0}
+.class-section-head h2{display:flex;align-items:center;gap:8px;margin:0;font-size:17px}
+.class-section-head form{margin-left:auto}
+.class-section-head input{padding:9px 12px;font:inherit;font-size:14px;min-height:40px;
+  border:1px solid var(--line);border-radius:10px;background:var(--surface);color:inherit}
+
+/* 任務 */
+.class-task-form{margin-bottom:18px;padding:16px;border:1px solid var(--line);border-radius:14px}
+.class-task-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.class-task{display:grid;gap:8px;padding:15px;border:1px solid var(--line);border-radius:14px;
+  background:var(--surface)}
+.class-task.closed{opacity:.68}
+.class-task-top{display:flex;flex-wrap:wrap;align-items:center;gap:9px}
+.class-task-top h3{margin:0;font-size:16px}
+.class-task p{margin:0;font-size:14px;line-height:1.7;color:var(--ink-soft);white-space:pre-wrap}
+.class-task-bottom{display:flex;flex-wrap:wrap;align-items:center;gap:16px;font-size:13px;
+  color:var(--ink-soft)}
+.class-task-bottom>span{display:inline-flex;align-items:center;gap:5px}
+.class-closed{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;
+  background:var(--line);font-size:12px}
+
+/* 比較：橫向捲動，標題列黏在上面 */
+.class-compare h2{margin:6px 0 4px;font-size:19px}
+.class-latest{display:inline-flex;align-items:center;gap:7px;margin-left:auto}
+.class-compare-scroll{overflow-x:auto;margin:14px -18px 0;padding:0 18px 10px}
+.class-compare-grid{display:grid;gap:12px;min-width:min-content}
+.class-compare-head{position:sticky;top:0;display:flex;align-items:center;gap:8px;padding:8px 2px;
+  background:var(--bg,#fff);font-size:14px;z-index:1}
+.class-compare-cell{display:grid;gap:8px;align-content:start;padding:12px;min-height:80px;
+  border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.class-compare-cell pre{margin:0;font:inherit;font-size:13px;line-height:1.7;white-space:pre-wrap;
+  word-break:break-word}
+.class-compare-cell img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:9px}
+.class-note{margin:0;padding:8px 10px;border-radius:9px;background:var(--accent-soft,#e7efe9);
+  font-size:13px;line-height:1.65}
+.class-star{border:0;background:transparent;color:var(--ink-soft);cursor:pointer;padding:2px}
+.class-star.on{color:#c99a2e}
+
+/* 教師台 */
+.class-code-show{padding:6px 12px;border-radius:10px;background:var(--accent-soft,#e7efe9);
+  font-size:17px;letter-spacing:.08em}
+.class-member-list,.class-team-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.class-member{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 14px;
+  border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.class-member>div:first-child{display:grid;gap:2px;min-width:0}
+.class-member small{color:var(--ink-soft);font-size:12px}
+.class-member .class-actions{margin-left:auto}
+.class-member select{padding:8px 10px;font:inherit;font-size:14px;min-height:40px;
+  border:1px solid var(--line);border-radius:10px;background:var(--surface);color:inherit}
+.class-team-list li{display:flex;align-items:center;gap:12px}
+.class-team-list input{flex:1 1 auto;min-width:0;padding:9px 12px;font:inherit;font-size:14px;
+  min-height:40px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:inherit}

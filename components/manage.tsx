@@ -131,14 +131,15 @@ function ExampleCaption({entry,manage,busy,editing,draft,tag:Tag='figcaption',
     onClick={()=>onStart('')}><Plus size={12}/>加上說明</button></Tag>;
 }
 
-export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:CardPrompt;storage?:string;manage:boolean;onChanged:()=>void;notify:(s:string,undo?:()=>void)=>void}) {
+// manage＝維護者（可以移除範例）；contribute＝任何人都能做的貢獻（加範例、補說明）
+export function ExampleGallery({prompt,storage,manage,contribute,onChanged,notify}:{prompt:CardPrompt;storage?:string;manage:boolean;contribute:boolean;onChanged:()=>void;notify:(s:string,undo?:()=>void)=>void}) {
   const [busy,setBusy]=useState(false),[caption,setCaption]=useState(''),[zoom,setZoom]=useState(''),[text,setText]=useState(''),[writing,setWriting]=useState(false);
   // 事後補說明：editing 記住正在改哪一個範例
   const [editing,setEditing]=useState<string>(''),[draft,setDraft]=useState('');
   const [dropping,setDropping]=useState<typeof items[number]|null>(null);
   const input=useRef<HTMLInputElement>(null);
   const items=prompt.examples??[];
-  if(!storage||(!items.length&&!manage)) return null;
+  if(!storage||(!items.length&&!contribute)) return null;
   const kindOf=(e:typeof items[number])=>e.kind??'image';
   async function run(what:Promise<unknown>,done:string){
     setBusy(true);
@@ -156,8 +157,8 @@ export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:
       draft.trim()?'說明已更新':'說明已清空');
   };
   // 綁 props 而不是在 render 裡宣告元件：後者每打一個字就重新掛載，手機上會一直掉焦點
-  const capProps=(e:typeof items[number])=>({entry:e as ExampleEntry,manage,busy,
-    editing:editing===keyOf(e),draft,
+  const capProps=(e:typeof items[number])=>({entry:e as ExampleEntry,busy,
+    manage:contribute,editing:editing===keyOf(e),draft,
     onStart:(text:string)=>{setEditing(keyOf(e));setDraft(text);},onDraft:setDraft,
     onSave:()=>saveCaption(e),onCancel:()=>setEditing('')});
   const size=(n?:number)=>n?n>=1048576?`${(n/1048576).toFixed(1)} MB`:`${Math.max(1,Math.round(n/1024))} KB`:'';
@@ -189,18 +190,18 @@ export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:
           <ExampleCaption {...capProps(e)} tag="div"/>
           {manage&&<button className="icon-button danger" aria-label="移除這個範例" disabled={busy} onClick={()=>setDropping(e)}><Trash2 size={14}/></button>}
         </details>)}</div>}
-    {manage&&items.length<6&&<div className="example-add">
+    {contribute&&items.length<6&&<div className="example-add">
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json" hidden
         onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void run(uploadExample(prompt.id,f,caption),'範例已加入');}}/>
       <input className="example-caption" placeholder="接下來要加的那一個的說明（選填，之後也能改）" maxLength={200} value={caption} onChange={e=>setCaption(e.target.value)}/>
       <Button variant="outline" size="sm" disabled={busy} onClick={()=>input.current?.click()}>{busy?<LoaderCircle size={15} className="spin"/>:<ImagePlus size={15}/>}加圖片或檔案</Button>
       <Button variant="ghost" size="sm" disabled={busy} onClick={()=>setWriting(!writing)}><MessageSquareText size={15}/>貼上文字結果</Button>
     </div>}
-    {manage&&writing&&<div className="example-text-add">
+    {contribute&&writing&&<div className="example-text-add">
       <textarea rows={5} maxLength={8000} placeholder="把 AI 回答的結果貼在這裡，讓大家看到這個 Prompt 實際跑出什麼。" value={text} onChange={e=>setText(e.target.value)}/>
       <Button size="sm" disabled={busy||!text.trim()} onClick={()=>void run(uploadTextExample(prompt.id,text,caption),'文字範例已加入')}>{busy?<LoaderCircle size={15} className="spin"/>:<Check size={15}/>}加入文字範例</Button>
     </div>}
-    {manage&&<p className="example-note">圖片 JPG／PNG／WebP（自動縮小，3 MB 內）；檔案 PDF、Word、Excel、PowerPoint、txt、md、csv、json（10 MB 內）；或直接貼上文字。每則最多 6 個，所有人都看得到。</p>}
+    {contribute&&<p className="example-note">圖片 JPG／PNG／WebP（自動縮小，3 MB 內）；檔案 PDF、Word、Excel、PowerPoint、txt、md、csv、json（10 MB 內）；或直接貼上文字。每則最多 6 個，所有人都看得到。</p>}
     <ConfirmDelete open={!!dropping} busy={busy} title={dropping?.caption||dropping?.name||'這個範例'}
       origin={`${prompt.title} 的範例`} scope="移除之後所有人都看不到這個範例，而且不能復原。"
       onCancel={()=>setDropping(null)} onConfirm={()=>{if(dropping)remove(dropping);}}/>

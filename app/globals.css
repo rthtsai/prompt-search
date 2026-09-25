@@ -238,6 +238,73 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 .bulk-bar{bottom:calc(24px + env(safe-area-inset-bottom))}
 .example-lightbox{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 
+/* 桌機的字級下限。原本頁尾 8px、標籤 8px、卡片說明 10px——螢幕大不代表字要小。
+   閱讀用的至少 13px，次要資訊至少 11.5px，純裝飾的（首頁插圖、頭像縮寫、{ } 符號）不動。
+   放在手機區塊之前，手機那一套仍然蓋得過它。 */
+.page-footer{font-size:13px}
+.footer-about{font-size:inherit}
+.card-summary{font-size:13px;line-height:1.75}
+.card-category{font-size:12px}
+.card-bottom>span{font-size:12px}
+.tag-list button{font-size:11.5px}
+.use-button{font-size:13px}
+.badge,.count-chip,.auto-chip,.card-cover span{font-size:11.5px}
+.card-move{font-size:12px}
+.card-move select{font-size:12.5px}
+.hero p{font-size:15px}
+.suggestions,.suggestions button{font-size:13px}
+.text-link{font-size:13px}
+.breadcrumb,.breadcrumb strong{font-size:13px}
+.workspace-label{font-size:13px}
+.profile{font-size:13.5px}
+.profile small{font-size:12px}
+.sidebar-heading{font-size:11.5px}
+.category-nav button small{font-size:11.5px}
+.category-tile>span:not(.category-symbol){font-size:13px}
+.category-tile>small{font-size:12px}
+.collect-note p{font-size:13px}
+.collect-note button{font-size:13.5px}
+.nav-count{font-size:12px}
+.sync-status,.shortcut-help,.organize-toggle,.button-sm,.sort-control{font-size:13px}
+.filter-line,.filter-line select,.filter-line button{font-size:13px}
+.detail-meta{font-size:12.5px}
+.version-picker select,.lang-toggle button{font-size:12.5px}
+.panel-description{font-size:13px}
+.variable-field{font-size:13.5px}
+.variable-choice legend{font-size:13.5px}
+.variable-field textarea::placeholder{font-size:13px}
+.live-label,.preview-footer{font-size:11.5px}
+.author-note{font-size:12.5px}
+.author-note small{font-size:11.5px}
+.example-button{font-size:12.5px}
+.example-grid figcaption,.example-note{font-size:12.5px}
+.example-file small{font-size:12px}
+.modal-description{font-size:13.5px}
+.info-note strong{font-size:13.5px}
+.info-note p{font-size:13.5px}
+.local-note,.import-explainer{font-size:12.5px}
+.import-banner p{font-size:13px}
+.import-banner>.button{font-size:13px}
+.import-empty p,.import-progress p{font-size:13.5px}
+.import-progress small{font-size:12px}
+.paste-label{font-size:13.5px}
+.upload-zone>span:not(.upload-icon){font-size:13px}
+.upload-zone small{font-size:12px}
+.review-summary{font-size:12.5px}
+.review-body{font-size:13px}
+.review-body pre{font-size:13px}
+.review-body small,.review-list summary small{font-size:12px}
+.review-description{font-size:12.5px}
+.search-highlight{font-size:12.5px}
+.editor-form label{font-size:13px}
+.editor-form small{font-size:12px}
+.editor-form .variable-editor-row label{font-size:12px}
+.variable-editor-row code{font-size:12.5px}
+.variable-editor-empty{font-size:12.5px}
+.category-manager li small{font-size:12px}
+.bulk-move select{font-size:13px}
+.other-hint button{font-size:13px}
+
 /* 手機上的字曾經被壓到 7–11px——那不是「緊湊」，是看不清楚。
    這裡把整套手機字級拉回可讀的下限，並讓可點的東西至少 40px 高。
    放在檔案最後，蓋掉上面 740 區塊裡的舊值。 */
@@ -257,7 +324,7 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   .use-button{font-size:13px;min-height:40px}
   .import-banner h3{font-size:15px}
   .import-banner p{font-size:12.5px}
-  .page-footer{font-size:11px}
+  .page-footer{font-size:12.5px}
   .modal-description{font-size:13px}
   .detail-meta{font-size:12px}
   .modal-footer .button{font-size:14px;min-height:42px;padding:10px 14px}

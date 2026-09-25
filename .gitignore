@@ -13,3 +13,7 @@ pages-demo/public/
 .env.class
 pages-demo/out-class/
 pages-demo/.next-class/
+
+# next build 每次都會重新產生這兩個
+AGENTS.md
+CLAUDE.md

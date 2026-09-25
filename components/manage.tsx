@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {ArrowDown,ArrowUp,Check,ChevronDown,FileText,FolderInput,ImagePlus,Layers,LoaderCircle,MessageSquareText,Plus,Trash2,X} from 'lucide-react';
+import {ArrowDown,ArrowUp,Check,ChevronDown,FileText,FolderInput,ImagePlus,Layers,LoaderCircle,MessageSquareText,PenLine,Plus,Trash2,X} from 'lucide-react';
 import {Button} from './ui/button';
 import {Modal} from './ui/dialog';
 import {api,uploadExample,uploadTextExample} from './api';
@@ -108,8 +108,34 @@ export function BulkBar({selected,categories,onMove,onMerge,onDelete,onClear,bus
 }
 
 /** What a prompt produced: pictures, files to download, or the text answer itself. */
+
+type ExampleEntry={id?:string;path?:string;caption:string;name?:string};
+/** 範例說明：看得到、改得動。沒寫的時候維護者會看到一個明確的入口。 */
+function ExampleCaption({entry,manage,busy,editing,draft,tag:Tag='figcaption',
+    onStart,onDraft,onSave,onCancel}:{
+    entry:ExampleEntry;manage:boolean;busy:boolean;editing:boolean;draft:string;
+    tag?:'figcaption'|'div';onStart(text:string):void;onDraft(text:string):void;
+    onSave():void;onCancel():void}) {
+  if(editing) return <Tag className="example-caption-edit">
+    <input autoFocus value={draft} maxLength={200} placeholder="這個範例在示範什麼？" aria-label="範例說明"
+      onChange={e=>onDraft(e.target.value)}
+      onKeyDown={e=>{if(e.key==='Enter')onSave();if(e.key==='Escape')onCancel();}}/>
+    <Button size="sm" disabled={busy} onClick={onSave}><Check size={14}/>儲存</Button>
+    <button type="button" className="text-link" onClick={onCancel}>取消</button>
+  </Tag>;
+  if(entry.caption) return <Tag className="example-caption-line">{entry.caption}
+    {manage&&<button type="button" className="text-link" aria-label="修改這個範例的說明"
+      onClick={()=>onStart(entry.caption)}><PenLine size={12}/>改說明</button>}</Tag>;
+  if(!manage) return null;
+  return <Tag className="example-caption-line"><button type="button" className="text-link"
+    onClick={()=>onStart('')}><Plus size={12}/>加上說明</button></Tag>;
+}
+
 export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:CardPrompt;storage?:string;manage:boolean;onChanged:()=>void;notify:(s:string,undo?:()=>void)=>void}) {
   const [busy,setBusy]=useState(false),[caption,setCaption]=useState(''),[zoom,setZoom]=useState(''),[text,setText]=useState(''),[writing,setWriting]=useState(false);
+  // 事後補說明：editing 記住正在改哪一個範例
+  const [editing,setEditing]=useState<string>(''),[draft,setDraft]=useState('');
+  const [dropping,setDropping]=useState<typeof items[number]|null>(null);
   const input=useRef<HTMLInputElement>(null);
   const items=prompt.examples??[];
   if(!storage||(!items.length&&!manage)) return null;
@@ -120,9 +146,20 @@ export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:
     catch(e){notify((e as Error).message);}finally{setBusy(false);}
   }
   const remove=(e:typeof items[number])=>{
-    if(!window.confirm('把這個範例從 Prompt 移除？'))return;
+    setDropping(null);
     void run(api('/api/examples',{method:'DELETE',body:JSON.stringify({id:prompt.id,path:e.path,entryId:e.id})}),'已移除範例');
   };
+  const keyOf=(e:typeof items[number])=>e.id??e.path??'';
+  const saveCaption=(e:typeof items[number])=>{
+    setEditing('');
+    void run(api('/api/examples',{method:'POST',body:JSON.stringify({id:prompt.id,entryId:e.id,path:e.path,caption:draft})}),
+      draft.trim()?'說明已更新':'說明已清空');
+  };
+  // 綁 props 而不是在 render 裡宣告元件：後者每打一個字就重新掛載，手機上會一直掉焦點
+  const capProps=(e:typeof items[number])=>({entry:e as ExampleEntry,manage,busy,
+    editing:editing===keyOf(e),draft,
+    onStart:(text:string)=>{setEditing(keyOf(e));setDraft(text);},onDraft:setDraft,
+    onSave:()=>saveCaption(e),onCancel:()=>setEditing('')});
   const size=(n?:number)=>n?n>=1048576?`${(n/1048576).toFixed(1)} MB`:`${Math.max(1,Math.round(n/1024))} KB`:'';
   const images=items.filter(e=>kindOf(e)==='image'&&e.path),videos=items.filter(e=>kindOf(e)==='video'&&e.path),
     others=items.filter(e=>!['image','video'].includes(kindOf(e)));
@@ -131,29 +168,31 @@ export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:
     {images.length>0&&<div className="example-grid">{images.map(e=><figure key={e.id??e.path}>
       <button className="example-open" onClick={()=>setZoom(exampleUrl(storage!,e.path!))} aria-label={e.caption||'放大範例圖片'}>
         <img src={exampleUrl(storage!,e.path!)} alt={e.caption||`${prompt.title} 的範例圖片`} loading="lazy"/></button>
-      {e.caption&&<figcaption>{e.caption}</figcaption>}
-      {manage&&<button className="icon-button danger example-remove" aria-label="移除這個範例" disabled={busy} onClick={()=>remove(e)}><Trash2 size={14}/></button>}
+      <ExampleCaption {...capProps(e)}/>
+      {manage&&<button className="icon-button danger example-remove" aria-label="移除這個範例" disabled={busy} onClick={()=>setDropping(e)}><Trash2 size={14}/></button>}
     </figure>)}</div>}
     {videos.length>0&&<div className="example-videos">{videos.map(e=><figure key={e.id??e.path}>
       <video controls preload="metadata" playsInline src={exampleUrl(storage!,e.path!)}/>
-      {e.caption&&<figcaption>{e.caption}</figcaption>}
-      {manage&&<button className="icon-button danger example-remove" aria-label="移除這個範例" disabled={busy} onClick={()=>remove(e)}><Trash2 size={14}/></button>}
+      <ExampleCaption {...capProps(e)}/>
+      {manage&&<button className="icon-button danger example-remove" aria-label="移除這個範例" disabled={busy} onClick={()=>setDropping(e)}><Trash2 size={14}/></button>}
     </figure>)}</div>}
     {others.length>0&&<div className="example-list">{others.map(e=>kindOf(e)==='file'
       ? <div className="example-file" key={e.id??e.path}>
           <span className="file-mark"><FileText size={17}/></span>
           <a href={exampleUrl(storage!,e.path!)} target="_blank" rel="noopener noreferrer" download={e.name}>{e.name||'下載檔案'}</a>
-          <small>{[exampleTypes[e.mime??'']?.label,size(e.size)].filter(Boolean).join(' · ')}{e.caption?` · ${e.caption}`:''}</small>
-          {manage&&<button className="icon-button danger" aria-label="移除這個範例" disabled={busy} onClick={()=>remove(e)}><Trash2 size={14}/></button>}
+          <small>{[exampleTypes[e.mime??'']?.label,size(e.size)].filter(Boolean).join(' · ')}</small>
+          <ExampleCaption {...capProps(e)} tag="div"/>
+          {manage&&<button className="icon-button danger" aria-label="移除這個範例" disabled={busy} onClick={()=>setDropping(e)}><Trash2 size={14}/></button>}
         </div>
       : <details className="example-text" key={e.id}><summary><MessageSquareText size={15}/>{e.caption||'文字結果'}<ChevronDown size={15}/></summary>
           <pre>{e.text}</pre>
-          {manage&&<button className="icon-button danger" aria-label="移除這個範例" disabled={busy} onClick={()=>remove(e)}><Trash2 size={14}/></button>}
+          <ExampleCaption {...capProps(e)} tag="div"/>
+          {manage&&<button className="icon-button danger" aria-label="移除這個範例" disabled={busy} onClick={()=>setDropping(e)}><Trash2 size={14}/></button>}
         </details>)}</div>}
     {manage&&items.length<6&&<div className="example-add">
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json" hidden
         onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void run(uploadExample(prompt.id,f,caption),'範例已加入');}}/>
-      <input className="example-caption" placeholder="說明（選填）" maxLength={200} value={caption} onChange={e=>setCaption(e.target.value)}/>
+      <input className="example-caption" placeholder="接下來要加的那一個的說明（選填，之後也能改）" maxLength={200} value={caption} onChange={e=>setCaption(e.target.value)}/>
       <Button variant="outline" size="sm" disabled={busy} onClick={()=>input.current?.click()}>{busy?<LoaderCircle size={15} className="spin"/>:<ImagePlus size={15}/>}加圖片或檔案</Button>
       <Button variant="ghost" size="sm" disabled={busy} onClick={()=>setWriting(!writing)}><MessageSquareText size={15}/>貼上文字結果</Button>
     </div>}
@@ -162,6 +201,9 @@ export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:
       <Button size="sm" disabled={busy||!text.trim()} onClick={()=>void run(uploadTextExample(prompt.id,text,caption),'文字範例已加入')}>{busy?<LoaderCircle size={15} className="spin"/>:<Check size={15}/>}加入文字範例</Button>
     </div>}
     {manage&&<p className="example-note">圖片 JPG／PNG／WebP（自動縮小，3 MB 內）；檔案 PDF、Word、Excel、PowerPoint、txt、md、csv、json（10 MB 內）；或直接貼上文字。每則最多 6 個，所有人都看得到。</p>}
+    <ConfirmDelete open={!!dropping} busy={busy} title={dropping?.caption||dropping?.name||'這個範例'}
+      origin={`${prompt.title} 的範例`} scope="移除之後所有人都看不到這個範例，而且不能復原。"
+      onCancel={()=>setDropping(null)} onConfirm={()=>{if(dropping)remove(dropping);}}/>
     {zoom&&<button className="example-lightbox" onClick={()=>setZoom('')} aria-label="關閉放大檢視"><img src={zoom} alt="範例圖片放大"/></button>}
   </section>;
 }

@@ -171,6 +171,12 @@ export class CloudStore {
   if(url.pathname==='/api/categories'){
    const result=await this.rpc({op:'categories_save',items:input.items});if(!Array.isArray(result))throw new Error('雲端未確認分類變更');this.categoryList=result;this.invalidate();return result as T;
   }
+  // 範例說明可以事後改：原本只能在上傳的那一刻寫，寫完就再也碰不到
+  if(url.pathname==='/api/examples'&&options.method==='POST'){
+   const r=await this.rpc({op:'example_caption',id:input.id,entry_id:input.entryId,path:input.path,
+     caption:String(input.caption??'').slice(0,200)});
+   this.invalidate();return r as T;
+  }
   if(url.pathname==='/api/examples'&&options.method==='DELETE'){
    const r=await this.rpc({op:'example_remove',id:input.id,entry:{id:input.entryId,path:input.path}});this.invalidate();return r as T;
   }

@@ -97,7 +97,7 @@ export default function PromptApp() {
   return <div className={`app-shell ${dragging?'is-dragging':''}`}>
     {mobileNav&&<button className="nav-scrim" aria-label="關閉導覽" onClick={()=>setMobileNav(false)}/>}
     <aside className={`sidebar ${mobileNav?'sidebar-open':''}`}>
-      <button className="brand" onClick={()=>navigate('home')} aria-label="Fairy Prompt 首頁"><span className="brand-mark"><BookOpen size={23} strokeWidth={1.65}/></span><span>Fairy Prompt<small>YOUR IDEAS, READY TO USE.</small></span></button>
+      <button className="brand" onClick={()=>navigate('home')} aria-label="Fairy Prompt 首頁"><img src={(process.env.NEXT_PUBLIC_BASE_PATH??'')+'/logo-lockup.png'} alt="Fairy Prompt" width={190} height={53}/></button>
       <div className="workspace-label"><span className="workspace-dot"/>{cloudMode?'共用辭典':'這台裝置'}</div>
       <nav aria-label="主導覽" className="main-nav">
         <button className={view==='home'?'active':''} onClick={()=>navigate('home')}><Search size={19}/>探索與搜尋</button>

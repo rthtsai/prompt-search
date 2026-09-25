@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {ArrowDown,ArrowUp,Check,ChevronDown,FileText,FolderInput,ImagePlus,Layers,LoaderCircle,MessageSquareText,PenLine,Plus,Trash2,X} from 'lucide-react';
+import {ArrowDown,ArrowLeftRight,ArrowUp,Check,ChevronDown,FileText,FolderInput,ImagePlus,Layers,LoaderCircle,MessageSquareText,PenLine,Plus,Trash2,X} from 'lucide-react';
 import {Button} from './ui/button';
 import {Modal} from './ui/dialog';
 import {api,uploadExample,uploadTextExample} from './api';
@@ -155,6 +155,11 @@ export function ExampleGallery({prompt,storage,manage,contribute,onChanged,notif
   const setRole=(e:typeof items[number],role:'input'|'output')=>
     void run(api('/api/examples',{method:'POST',body:JSON.stringify({id:prompt.id,entryId:e.id,path:e.path,role})}),
       role==='input'?'已標成原圖':'已標成產出');
+  // 前後放反時兩張要一起換。只改一張會讓兩張都變成產出，整個前後對照就沒了。
+  const swapPair=(before:ExampleItem,after:ExampleItem)=>void run((async()=>{
+    await api('/api/examples',{method:'POST',body:JSON.stringify({id:prompt.id,entryId:before.id,path:before.path,role:'output'})});
+    await api('/api/examples',{method:'POST',body:JSON.stringify({id:prompt.id,entryId:after.id,path:after.path,role:'input'})});
+  })(),'兩張已對調');
   const saveCaption=(e:typeof items[number])=>{
     setEditing('');
     void run(api('/api/examples',{method:'POST',body:JSON.stringify({id:prompt.id,entryId:e.id,path:e.path,caption:draft})}),
@@ -171,17 +176,18 @@ export function ExampleGallery({prompt,storage,manage,contribute,onChanged,notif
   return <section className="example-panel">
     <div className="panel-label"><span>03</span><h3>這個 Prompt 做出來的樣子</h3>{items.length>0&&<span className="live-label">{items.length} 個</span>}</div>
     {pair.before&&pair.after&&<div className="example-pair">
-      {[['原圖',pair.before],['這個 Prompt 做出來的',pair.after]].map(([label,e])=>
+      {[['原圖',pair.before],['產出',pair.after]].map(([label,e])=>
         <figure key={(e as ExampleItem).id??(e as ExampleItem).path}>
           <span className="pair-label">{label as string}</span>
           <button className="example-open" onClick={()=>setZoom(exampleUrl(storage!,(e as ExampleItem).path!))} aria-label={(e as ExampleItem).caption||(label as string)}>
             <img src={exampleUrl(storage!,(e as ExampleItem).path!)} alt={(e as ExampleItem).caption||`${prompt.title} 的${label}`} loading="lazy"/></button>
-          <ExampleCaption {...capProps(e as ExampleItem)}/>
-          {contribute&&<button type="button" className="text-link pair-swap"
-            onClick={()=>setRole(e as ExampleItem,(e as ExampleItem).role==='input'?'output':'input')} disabled={busy}>
-            {(e as ExampleItem).role==='input'?'其實這是產出':'其實這是原圖'}</button>}
+          {/* 說明如果只是把上面那個標籤再寫一次（「原圖」），就不用再顯示一行 */}
+          <ExampleCaption {...capProps(e as ExampleItem)}
+            entry={{...(e as ExampleItem),caption:(e as ExampleItem).caption.trim()===label?'':(e as ExampleItem).caption}}/>
           {manage&&<button className="icon-button danger example-remove" aria-label="移除這個範例" disabled={busy} onClick={()=>setDropping(e as ExampleItem)}><Trash2 size={14}/></button>}
         </figure>)}
+      {contribute&&<button type="button" className="text-link pair-swap" disabled={busy}
+        onClick={()=>swapPair(pair.before!,pair.after!)}><ArrowLeftRight size={13}/>兩張放反了，對調</button>}
     </div>}
     {rest.length>0&&<div className="example-grid">{rest.map(e=><figure key={e.id??e.path}>
       <button className="example-open" onClick={()=>setZoom(exampleUrl(storage!,e.path!))} aria-label={e.caption||'放大範例圖片'}>
@@ -189,7 +195,7 @@ export function ExampleGallery({prompt,storage,manage,contribute,onChanged,notif
       <ExampleCaption {...capProps(e)}/>
       {contribute&&<button type="button" className="text-link" disabled={busy}
         onClick={()=>setRole(e,e.role==='input'?'output':'input')}>
-        {e.role==='input'?'標成產出':'標成原圖'}</button>}
+        {e.role==='input'?'改標成產出':'標成原圖（丟進 AI 之前的那張）'}</button>}
       {manage&&<button className="icon-button danger example-remove" aria-label="移除這個範例" disabled={busy} onClick={()=>setDropping(e)}><Trash2 size={14}/></button>}
     </figure>)}</div>}
     {videos.length>0&&<div className="example-videos">{videos.map(e=><figure key={e.id??e.path}>
@@ -213,8 +219,8 @@ export function ExampleGallery({prompt,storage,manage,contribute,onChanged,notif
     {contribute&&items.length<6&&<div className="example-add">
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json" hidden
         onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void run(uploadExample(prompt.id,f,caption,asInput?'input':'output'),'範例已加入');}}/>
-      <input className="example-caption" placeholder="接下來要加的那一個的說明（選填，之後也能改）" maxLength={200} value={caption} onChange={e=>setCaption(e.target.value)}/>
-      <label className="example-asinput"><input type="checkbox" checked={asInput} onChange={e=>setAsInput(e.target.checked)}/>這張是原圖（丟進 AI 之前的那張）</label>
+      <input className="example-caption" placeholder="說明（選填，之後可以改）" maxLength={200} value={caption} onChange={e=>setCaption(e.target.value)}/>
+      <label className="example-asinput"><input type="checkbox" checked={asInput} onChange={e=>setAsInput(e.target.checked)}/>要加的是原圖（丟進 AI 之前的那張）</label>
       <Button variant="outline" size="sm" disabled={busy} onClick={()=>input.current?.click()}>{busy?<LoaderCircle size={15} className="spin"/>:<ImagePlus size={15}/>}加圖片或檔案</Button>
       <Button variant="ghost" size="sm" disabled={busy} onClick={()=>setWriting(!writing)}><MessageSquareText size={15}/>貼上文字結果</Button>
     </div>}

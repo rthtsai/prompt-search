@@ -348,3 +348,11 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 .about-back{color:var(--green);font-size:14px;text-decoration:none;border-bottom:1px solid currentColor;padding-bottom:2px}
 .footer-about{color:var(--muted);text-decoration:none;margin-left:16px}
 .footer-about:hover{color:var(--green)}
+
+/* 側欄底部的「關於我們」：頁尾那個要捲過整個清單才看得到，這個每一頁都在 */
+.sidebar-about{display:inline-block;margin:12px 5px 0;color:var(--muted);font-size:13px;
+  text-decoration:none;border-bottom:1px solid transparent;padding-bottom:1px}
+.sidebar-about:hover{color:var(--green);border-bottom-color:currentColor}
+/* 側欄比視窗高時，底部這一塊（身分列＋關於我們）釘在最下面，
+   不然在 900px 高的筆電上要捲側欄才看得到。 */
+.sidebar-bottom{position:sticky;bottom:0;background:var(--sidebar);padding-bottom:4px}

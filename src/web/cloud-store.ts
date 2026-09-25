@@ -2,6 +2,7 @@ import {CATEGORIES,type Variable} from '../domain.ts';
 import {withDescription} from './describe.ts';
 import {parseInput} from '../parser.ts';
 import {organizeBrowser,searchBrowser} from './browser-store.ts';
+import {maintainerToken,isMaintainer} from './maintainer.ts';
 import {type CardPrompt,type ImportJob,mergeVariables} from './types.ts';
 import {CLOUD_CACHE_KEY,collectLegacy,legacyCard,legacyBackup,type LegacySnapshot} from './legacy-storage.ts';
 
@@ -19,7 +20,10 @@ export function createRpc(config:CloudConfig,transport:typeof fetch=fetch):Rpc {
  return async(request)=>{
   const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),20000);
   try{
-   const response=await transport(config.url+'/rest/v1/rpc/prompt_library',{method:'POST',headers:{apikey:config.key,'Content-Type':'application/json',...(config.key.startsWith('eyJ')?{Authorization:'Bearer '+config.key}:{})},body:JSON.stringify({request}),signal:controller.signal,cache:'no-store'});
+   // 破壞性操作在資料庫端要驗這個 token；沒有就只剩新增與複製。
+   const token=maintainerToken();
+   const payload=token?{...request,maintainer:token}:request;
+   const response=await transport(config.url+'/rest/v1/rpc/prompt_library',{method:'POST',headers:{apikey:config.key,'Content-Type':'application/json',...(config.key.startsWith('eyJ')?{Authorization:'Bearer '+config.key}:{})},body:JSON.stringify({request:payload}),signal:controller.signal,cache:'no-store'});
    const result=await response.json();if(!response.ok)throw new Error(result.message??`雲端請求失敗 (${response.status})`);return result;
   }catch(e){if((e as Error).name==='AbortError')throw new Error('連線逾時，資料尚未確認儲存，請重試');throw e;}finally{clearTimeout(timeout);}
  };
@@ -162,7 +166,7 @@ export class CloudStore {
    if(sort==='recent')items=items.filter(p=>p.last_used).sort((a,b)=>(b.last_used??'').localeCompare(a.last_used??''));
    else if(sort==='popular')items.sort((a,b)=>b.use_count-a.use_count);else if(!q)items.sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
    const names=[...this.categoryList];for(const p of groups)if(!names.some(c=>c.name===p.category))names.push({name:p.category});
-   return {items,total:groups.length,uses:all.reduce((n,p)=>n+p.use_count,0),categories:names.map(c=>({...c,count:groups.filter(p=>p.category===c.name).length})),tags:[...new Set(groups.flatMap(p=>p.tags))],mode:'cloud',degraded:offline,warning,manage:true,storage:this.config.url,stamp,synced_at:offline?undefined:new Date().toISOString()} as T;
+   return {items,total:groups.length,uses:all.reduce((n,p)=>n+p.use_count,0),categories:names.map(c=>({...c,count:groups.filter(p=>p.category===c.name).length})),tags:[...new Set(groups.flatMap(p=>p.tags))],mode:'cloud',degraded:offline,warning,manage:isMaintainer(),storage:this.config.url,stamp,synced_at:offline?undefined:new Date().toISOString()} as T;
   }
   if(url.pathname==='/api/categories'){
    const result=await this.rpc({op:'categories_save',items:input.items});if(!Array.isArray(result))throw new Error('雲端未確認分類變更');this.categoryList=result;this.invalidate();return result as T;
@@ -172,7 +176,7 @@ export class CloudStore {
   }
   if(url.pathname==='/api/bulk'){
    const ids:string[]=input.ids;if(!Array.isArray(ids)||!ids.length)throw new Error('請先勾選 Prompt');
-   const op=input.action==='move'?'move':input.action==='delete'?'delete_many':input.action==='merge'?'merge':'';if(!op)throw new Error('不支援的操作');
+   const op=input.action==='move'?'move':input.action==='delete'?'delete_many':input.action==='merge'?'merge':input.action==='restore'?'restore_many':'';if(!op)throw new Error('不支援的操作');
    const result=await this.rpc({op,ids,category:input.category});this.invalidate();return result as T;
   }
   if(url.pathname==='/api/imports'){
@@ -185,15 +189,17 @@ export class CloudStore {
   if(url.pathname.startsWith('/api/imports/')){
    const job=this.jobs.get(url.pathname.split('/').at(-1)!);if(!job)throw new Error('整理視窗已重開，請重新貼上或匯入');
    if(options.method==='POST'&&job.status!=='accepted'){
-    // 畫面上改過的說明要送回來，只覆蓋說明，其餘仍以整理結果為準。
+    // 畫面上改過的說明與分類要送回來，其餘仍以整理結果為準。
     const edits:CardPrompt[]=Array.isArray(input.items)?input.items:[];
     const items=job.items.map(p=>{const e=edits.find(x=>x?.id===p.id);
-     return e?{...p,summary:String(e.summary??p.summary).slice(0,2000),summary_auto:!!e.summary_auto}:p;});
+     return e?{...p,summary:String(e.summary??p.summary).slice(0,2000),summary_auto:!!e.summary_auto,
+       category:typeof e.category==='string'&&e.category?e.category:p.category}:p;});
     await uploadBatches(items,this.rpc);job.items=items;job.status='accepted';this.invalidate();}return job as T;
   }
   if(url.pathname.startsWith('/api/prompts/')){
    const id=url.pathname.split('/').at(-1)!;
    if(options.method==='DELETE'){const result=await this.rpc({op:'delete',id,version:input.version});if(!result?.deleted)throw new Error('雲端未確認刪除');this.invalidate();return result;}
+   if(input.action==='restore'){const result=await this.rpc({op:'restore',id});this.invalidate();return result as T;}
    if(input.action==='edit'){
     const p=draftItem(input,input.previous??[]);
     const result=input.asVersion?await this.rpc({op:'version',id,item:{...p,source:'新版本'}}):input.fork?(await uploadBatches([{...p,source:'另存範本'}],this.rpc))[0]:await this.rpc({op:'edit',id,version:input.version,item:p});this.invalidate();return result as T;

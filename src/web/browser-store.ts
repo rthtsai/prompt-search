@@ -1,6 +1,7 @@
 import definitions from '../../fixtures/prompts.json' with {type:'json'};
 import {CATEGORIES,validateExtracted,type Extracted} from '../domain.ts';
 import {normalize,rewrite,snippet} from '../text-shared.ts';
+import {guessRequired} from './fill.ts';
 import {describe} from './describe.ts';
 import {parseInput} from '../parser.ts';
 import {fillTemplate,type CardPrompt,type Library,type ImportJob} from './types.ts';
@@ -18,7 +19,8 @@ export function organizeBrowser(input:string,source:string):CardPrompt {
     const name=m[1]==='公司'?'公司名稱':m[1];if(m[2].includes('{{')||variables.some(v=>v.name===name))continue;
     body=body.replace(m[0],`${m[1]}：{{${name}}}`);variables.push({name,label:name,example:m[2],required:true});
   }
-  for(const m of body.matchAll(/\{\{([^{}]+)\}\}/g))if(!variables.some(v=>v.name===m[1]))variables.push({name:m[1],label:m[1],example:'',required:true});
+  // 一律必填會讓「要不要工作紙」這種可選欄位卡住複製，所以只有核心欄位才必填
+  for(const m of body.matchAll(/\{\{([^{}]+)\}\}/g))if(!variables.some(v=>v.name===m[1]))variables.push({name:m[1],label:m[1],example:'',required:guessRequired(m[1],body)});
   const q=rewrite(input),title=input.split('\n')[0].replace(/^#+\s*/,'').slice(0,60);
   const extracted:Extracted={title,body,summary:describe(body,{title,variables})||input.replace(/\s+/g,' ').slice(0,100),use_case:title,category:(q.categories[0]??'其他') as Extracted['category'],tags:q.tags,model_hint:q.models,lang:'zh-Hant',variables};validateExtracted(extracted);
   return {...extracted,summary_auto:true,id:crypto.randomUUID(),source,fork_of:null,use_count:0,last_used:null,updated_at:new Date().toISOString()};
@@ -33,7 +35,23 @@ export async function browserApi<T>(path:string,options:RequestInit={}):Promise<
   if(url.pathname==='/api/export')return await transaction(data=>({version:1,exported_at:new Date().toISOString(),prompts:data.prompts}),false) as T;
   if(url.pathname==='/api/library')return await library(url) as T;
   if(url.pathname==='/api/imports'&&method==='POST')return await start(input.text,input.source) as T;
-  if(url.pathname.startsWith('/api/imports/')){const id=url.pathname.split('/').at(-1)!;return await transaction(data=>{const job=data.jobs[id];if(!job)throw new Error('找不到這次匯入');if(method==='GET'){if(job.status==='processing'&&!running.has(id)){job.status='error';job.message='網頁已重新載入，請重新匯入';}return job;}if(data.accepted.includes(id))return job;if(job.status!=='review')throw new Error('請等候整理完成');for(const p of job.items){if(data.prompts.some(old=>normalize(old.body)===normalize(p.body)))throw new Error('內容已在另一個視窗匯入，請重新整理');data.prompts.push(p);}data.accepted.push(id);job.status='accepted';return job;}) as T;}
+  if(url.pathname.startsWith('/api/imports/')){const id=url.pathname.split('/').at(-1)!;return await transaction(data=>{const job=data.jobs[id];if(!job)throw new Error('找不到這次匯入');if(method==='GET'){if(job.status==='processing'&&!running.has(id)){job.status='error';job.message='網頁已重新載入，請重新匯入';}return job;}if(data.accepted.includes(id))return job;if(job.status!=='review')throw new Error('請等候整理完成');
+    // 預覽畫面上改過的說明與分類要收下來，不然改了等於白改
+    const edits:CardPrompt[]=Array.isArray(input?.items)?input.items:[];
+    job.items=job.items.map(p=>{const e=edits.find(x=>x?.id===p.id);
+      return e?{...p,summary:String(e.summary??p.summary).slice(0,2000),summary_auto:!!e.summary_auto,
+        category:typeof e.category==='string'&&e.category?e.category:p.category}:p;});
+    for(const p of job.items){if(data.prompts.some(old=>normalize(old.body)===normalize(p.body)))throw new Error('內容已在另一個視窗匯入，請重新整理');data.prompts.push(p);}data.accepted.push(id);job.status='accepted';return job;}) as T;}
+  // 示範版也要能改分類，不然卡片上的分類選單在這個模式下會丟「不支援的操作」
+  if(url.pathname==='/api/bulk'&&method==='POST')return await transaction(data=>{
+    const ids:string[]=Array.isArray(input.ids)?input.ids:[];
+    if(input.action==='move'){let n=0;
+      for(const p of data.prompts)if(ids.includes(p.id)){p.category=String(input.category);n++;}
+      return {moved:n};}
+    if(input.action==='delete'){const before=data.prompts.length;
+      data.prompts=data.prompts.filter(p=>!ids.includes(p.id));return {deleted:before-data.prompts.length};}
+    throw new Error('示範版不支援這個操作');
+  }) as T;
   if(url.pathname.startsWith('/api/prompts/')){const id=url.pathname.split('/').at(-1)!;return await transaction(data=>{const p=data.prompts.find(p=>p.id===id);if(!p)throw new Error('找不到這個 Prompt');if(input.action==='use'){fillTemplate(p.body,p.variables,input.values);if(!data.events.includes(input.eventId)){p.use_count++;p.last_used=new Date().toISOString();data.events.push(input.eventId);data.events=data.events.slice(-10000);}return p;}if(input.action==='edit'){const updated=organizeBrowser(input.body,p.source);updated.title=input.title.trim();updated.summary=input.summary.trim();updated.category=input.category;updated.variables=updated.variables.map(v=>p.variables.find(old=>old.name===v.name)??v);validateExtracted({...updated,use_case:updated.title,lang:'zh-Hant'});if(data.prompts.some(old=>(input.fork||old.id!==id)&&normalize(old.body)===normalize(updated.body)))throw new Error('這份內容已在辭典裡，請修改後再儲存');if(input.fork){updated.fork_of=id;data.prompts.push(updated);}else{Object.assign(updated,{id,use_count:p.use_count,last_used:p.last_used,fork_of:p.fork_of});data.prompts[data.prompts.indexOf(p)]=updated;}return updated;}throw new Error('不支援的操作');}) as T;}
   throw new Error('不支援的操作');
 }

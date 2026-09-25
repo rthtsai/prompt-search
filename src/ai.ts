@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { guessRequired } from './web/fill.ts';
 import { CATEGORIES, type AI, type Extracted, validateEmbedding, validateExtracted } from './domain.ts';
 import { tokens, rewrite, normalize } from './text.ts';
 
@@ -65,7 +66,7 @@ export class DemoAI implements AI {
       body = body.replace(m[0], `${m[1]}：{{${name}}}`);
       variables.push({name,label:name,example:m[2],required:true});
     }
-    for (const m of body.matchAll(/\{\{([^{}]+)\}\}/g)) if (!variables.some(v => v.name === m[1])) variables.push({name:m[1],label:m[1],example:'',required:true});
+    for (const m of body.matchAll(/\{\{([^{}]+)\}\}/g)) if (!variables.some(v => v.name === m[1])) variables.push({name:m[1],label:m[1],example:'',required:guessRequired(m[1],body)});
     const query = rewrite(body);
     const title = input.split('\n')[0].replace(/^#+\s*/, '').slice(0, 60);
     const p: Extracted = {title,body,summary:input.replace(/\s+/g,' ').slice(0,100),use_case:title,category:(query.categories[0] ?? '其他') as Extracted['category'],tags:query.tags,lang:'zh-Hant',model_hint:query.models,variables};

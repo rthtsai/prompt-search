@@ -147,3 +147,47 @@
   background:var(--accent-soft,#e7efe9);color:var(--accent,#24584b)}
 .lesson-clip{width:100%;border-radius:12px;background:#000;display:block}
 @media (max-width:860px){.lesson-banner{grid-template-columns:1fr}}
+
+/* ——— 填空狀態：按鈕不會再無聲失敗 ——— */
+.fill-progress{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--muted);margin-bottom:10px}
+.fill-progress .text-link{margin-left:auto}
+.needs-fill{background:#f3ede0;color:#7a5a1e;border:1px solid #e0cfa6}
+.needs-fill:hover{background:#ece3cf}
+.variable-field.is-invalid input,.variable-field.is-invalid textarea,.variable-field.is-invalid select,
+.variable-choice.is-invalid .choice-row{border-color:#c0552f;box-shadow:0 0 0 3px #f6e0d7}
+.field-error{display:block;margin-top:5px;color:#a8451f;font-size:12.5px}
+.field-clear{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;border-radius:7px;background:transparent;color:var(--muted)}
+.field-clear:hover{background:var(--sidebar);color:var(--foreground)}
+.variable-field>label,.variable-field{position:relative}
+.pending-slot{background:#f6ecd4;color:#7a5a1e;border-radius:4px;padding:0 2px}
+.blank-note{display:flex;align-items:center;gap:8px;margin:0 22px 10px;padding:10px 12px;
+  border:1px solid #e0cfa6;background:#fdf8ec;border-radius:10px;font-size:13.5px;color:#6f551f}
+
+/* ——— 刪除：講清楚刪的是哪一則，而且要按兩次 ——— */
+.danger-row{display:flex;justify-content:flex-end;padding:22px 22px 4px;margin-top:24px;
+  border-top:1px solid var(--line)}
+.confirm-delete{padding:4px 22px 18px}
+.confirm-title{font-size:16px;font-weight:600;line-height:1.5}
+.confirm-origin{margin-top:4px;color:var(--muted);font-size:13px}
+.confirm-warning{display:flex;align-items:flex-start;gap:8px;margin-top:14px;padding:11px 13px;
+  border:1px solid #e3b5a4;background:#fdf1ec;border-radius:10px;color:#9c3d1c;font-size:13.5px;line-height:1.7}
+.danger-solid{background:#a8451f;color:#fff}
+.danger-solid:hover{background:#8e3917}
+.toast-undo{display:inline-flex;align-items:center;gap:5px;margin-left:10px;padding:4px 10px;
+  border-radius:8px;background:rgba(255,255,255,.16);color:inherit;font-size:13px}
+
+/* ——— 手機上改分類：標籤本身就是選單 ——— */
+.card-category-pick{position:relative;cursor:pointer}
+.card-category-pick select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.review-category{display:grid;gap:5px;margin-bottom:10px;font-size:13px;color:var(--muted)}
+.review-category select{padding:9px 11px;border:1px solid var(--line);border-radius:9px;
+  background:#fff;font-size:14px;color:var(--foreground);min-height:40px}
+.version-note-line{display:flex;align-items:center;gap:7px;margin:8px 0 0;color:var(--muted);font-size:12.5px}
+
+/* 吐司永遠在最上層。對話框開著時它按不到（Radix 會讓外面 inert），
+   所以對話框裡的「復原」改成就地顯示，不靠吐司。 */
+.toast{z-index:120}
+.cleared-note{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:8px 11px;
+  border:1px solid var(--line);border-radius:9px;background:var(--sidebar);font-size:13px;color:var(--muted)}
+.cleared-note button{margin-left:auto}

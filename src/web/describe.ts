@@ -12,6 +12,10 @@ const LABELS:[RegExp,string][]=[[/選擇題/,'選擇題'],[/填充題|填空/,'�
  [/難度/,'難度'],[/教材|課文/,'教材'],[/範例/,'範例'],[/格式/,'格式']];
 
 const chars=(s:string)=>[...s];
+/** 產出物：這些東西有沒有附，是看標題看不出來、但最影響要不要用的資訊。 */
+const DELIVERABLES:[RegExp,string][]=[[/工作紙|學習單/,'學習單'],[/簡報|投影片|PowerPoint|PPT/i,'簡報'],
+  [/講義/,'講義'],[/評量|測驗|考卷|小考/,'評量'],[/教案|課程計畫|課程大綱/,'教案'],
+  [/逐字稿|講稿/,'講稿'],[/檢核表|清單|checklist/i,'清單']];
 const cut=(s:string,n:number)=>chars(s).length<=n?s:chars(s).slice(0,n).join('')+'…';
 // 中文一個字資訊量大，40 字就夠；英文要放寬，不然一句話還沒說完就被切掉
 const room=(s:string,cjk=40,latin=80)=>/[\u4e00-\u9fff]/.test(s)?cjk:latin;
@@ -66,9 +70,14 @@ export function describe(body:string,options:{title?:string;variables?:Variable[
   result=result.replace(/[。．.、，]$/,'').trim();
   const format=FORMATS.find(([re])=>re.test(text));
   if(format&&!format[0].test(result))result+=`，輸出${format[1]}`;
+  // 教學類的 prompt 光看標題不知道會不會附學習單或簡報，而那正是她要的資訊
+  const made=DELIVERABLES.filter(([re])=>re.test(text)).map(([,name])=>name);
+  if(made.length&&!made.some(name=>result.includes(name)))
+    result+=`，會一併產出${made.slice(0,3).join('、')}`;
   const names=(options.variables??[]).map(v=>(v.label||v.name).replace(/（[^）]*）/g,'').trim()).filter(Boolean);
   if(names.length)result+=`（可填：${names.slice(0,3).join('、')}${names.length>3?' 等':''}）`;
-  return cut(result.replace(/\s+/g,' ').replace(/^[：:、，,｜|\s]+/,'').trim(),90);
+  // 上限從 90 放寬到 140：原本常常把「輸出…」和「可填…」整段切掉
+  return cut(result.replace(/\s+/g,' ').replace(/^[：:、，,｜|\s]+/,'').trim(),140);
 }
 
 /** 使用者留白時才自動產生；有寫過就原樣保留。 */

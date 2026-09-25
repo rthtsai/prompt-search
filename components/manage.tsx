@@ -12,13 +12,18 @@ export const typeLabels:Record<VariableType,string>={text:'自由填寫',select:
 const splitOptions=(text:string)=>text.split(/[,，、\n]/).map(s=>s.trim()).filter(Boolean);
 
 /** One fill-in field on the detail page, rendered according to the variable's type. */
-export function VariableInput({variable:v,value,onChange}:{variable:Variable;value:string;onChange:(value:string)=>void}) {
+export function VariableInput({variable:v,value,onChange,invalid=false}:{variable:Variable;value:string;onChange:(value:string)=>void;invalid?:boolean}) {
   const id='variable-'+v.name;
-  const label=<>{v.label}{v.required&&<span className="required-dot"> *</span>}</>;
-  if(v.type==='radio'&&v.options?.length) return <fieldset className="variable-field variable-choice"><legend>{label}</legend><div className="choice-row" role="radiogroup">{v.options.map(o=><button type="button" id={o===v.options![0]?id:undefined} role="radio" aria-checked={value===o} key={o} className={value===o?'chosen':''} onClick={()=>onChange(value===o?'':o)}>{value===o&&<Check size={12}/>}{o}</button>)}</div></fieldset>;
-  if(v.type==='select'&&v.options?.length) return <label className="variable-field" htmlFor={id}>{label}<select id={id} value={value} onChange={e=>onChange(e.target.value)}><option value="">請選擇…</option>{v.options.map(o=><option key={o}>{o}</option>)}</select></label>;
-  if(v.type==='number') return <label className="variable-field" htmlFor={id}>{label}<input id={id} type="number" inputMode="numeric" placeholder={v.example||'輸入數字'} value={value} onChange={e=>onChange(e.target.value)}/></label>;
-  return <label className="variable-field" htmlFor={id}>{label}<textarea id={id} rows={/文章|內容|數據|程式碼|教材/.test(v.name)?3:2} placeholder={v.example||`填入${v.label}`} value={value} onChange={e=>onChange(e.target.value)}/></label>;
+  // 清空一格：手機上要她按一長串 backspace 才刪得掉，太苦了
+  const clear=value?<button type="button" className="field-clear" aria-label={`清空${v.label}`}
+    onClick={()=>onChange('')}><X size={13}/></button>:null;
+  const note=invalid?<small className="field-error" id={id+'-error'}>這一格還沒填</small>:null;
+  const flags={'aria-invalid':invalid||undefined,'aria-describedby':invalid?id+'-error':undefined} as const;
+  const label=<>{v.label}{v.required&&<span className="required-dot"> *</span>}{clear}</>;
+  if(v.type==='radio'&&v.options?.length) return <fieldset className={`variable-field variable-choice ${invalid?'is-invalid':''}`}><legend>{label}</legend><div className="choice-row" role="radiogroup">{v.options.map(o=><button type="button" id={o===v.options![0]?id:undefined} role="radio" aria-checked={value===o} key={o} className={value===o?'chosen':''} onClick={()=>onChange(value===o?'':o)}>{value===o&&<Check size={12}/>}{o}</button>)}</div>{note}</fieldset>;
+  if(v.type==='select'&&v.options?.length) return <label className={`variable-field ${invalid?'is-invalid':''}`} htmlFor={id}>{label}<select id={id} {...flags} value={value} onChange={e=>onChange(e.target.value)}><option value="">請選擇…</option>{v.options.map(o=><option key={o}>{o}</option>)}</select>{note}</label>;
+  if(v.type==='number') return <label className={`variable-field ${invalid?'is-invalid':''}`} htmlFor={id}>{label}<input id={id} {...flags} type="number" inputMode="numeric" placeholder={v.example||'輸入數字'} value={value} onChange={e=>onChange(e.target.value)}/>{note}</label>;
+  return <label className={`variable-field ${invalid?'is-invalid':''}`} htmlFor={id}>{label}<textarea id={id} {...flags} rows={/文章|內容|數據|程式碼|教材/.test(v.name)?3:2} placeholder={v.example||`填入${v.label}`} value={value} onChange={e=>onChange(e.target.value)}/>{note}</label>;
 }
 
 /** Settings for every {{placeholder}} found in either language; keeps settings of names that are still used. */
@@ -103,7 +108,7 @@ export function BulkBar({selected,categories,onMove,onMerge,onDelete,onClear,bus
 }
 
 /** What a prompt produced: pictures, files to download, or the text answer itself. */
-export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:CardPrompt;storage?:string;manage:boolean;onChanged:()=>void;notify:(s:string)=>void}) {
+export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:CardPrompt;storage?:string;manage:boolean;onChanged:()=>void;notify:(s:string,undo?:()=>void)=>void}) {
   const [busy,setBusy]=useState(false),[caption,setCaption]=useState(''),[zoom,setZoom]=useState(''),[text,setText]=useState(''),[writing,setWriting]=useState(false);
   const input=useRef<HTMLInputElement>(null);
   const items=prompt.examples??[];
@@ -159,4 +164,41 @@ export function ExampleGallery({prompt,storage,manage,onChanged,notify}:{prompt:
     {manage&&<p className="example-note">圖片 JPG／PNG／WebP（自動縮小，3 MB 內）；檔案 PDF、Word、Excel、PowerPoint、txt、md、csv、json（10 MB 內）；或直接貼上文字。每則最多 6 個，所有人都看得到。</p>}
     {zoom&&<button className="example-lightbox" onClick={()=>setZoom('')} aria-label="關閉放大檢視"><img src={zoom} alt="範例圖片放大"/></button>}
   </section>;
+}
+
+/**
+ * 刪除確認。原本用的是 window.confirm，只寫「刪除這個 Prompt？」——
+ * 她問的正是「你確定刪的不是我自己改的那一個嗎」，所以這裡一定要講出
+ * 刪的是哪一則、它是哪裡來的，而且要按兩次才真的刪。
+ */
+export function ConfirmDelete({open,title,origin,scope,busy,onCancel,onConfirm}:{
+    open:boolean;title:string;origin:string;scope:string;busy:boolean;
+    onCancel:()=>void;onConfirm:()=>void}) {
+  const [armed,setArmed]=useState(false);
+  // 預設焦點放在「取消」，手機上誤觸 Enter 才不會直接刪掉
+  useEffect(()=>{if(open){setArmed(false);
+    setTimeout(()=>document.getElementById('confirm-cancel')?.focus(),0);}},[open]);
+  return <Modal open={open} onOpenChange={next=>{if(!next)onCancel();}} title="確定要刪除嗎？"
+    description="刪掉之後，所有人都會看不到。">
+    <div className="confirm-delete">
+      <p className="confirm-title">{title}</p>
+      <p className="confirm-origin">{origin}</p>
+      <p className="confirm-warning"><Trash2 size={15}/>{scope}</p>
+      <div className="modal-footer">
+        <Button id="confirm-cancel" variant="outline" onClick={onCancel} disabled={busy}>取消</Button>
+        <Button className="danger-solid" disabled={busy}
+          onClick={()=>armed?onConfirm():setArmed(true)}>
+          {busy?<LoaderCircle size={16} className="spin"/>:<Trash2 size={16}/>}
+          {armed?'再按一次才會刪除':'確定刪除'}</Button>
+      </div>
+    </div>
+  </Modal>;
+}
+
+/** 這一則是哪裡來的——確認視窗要靠它回答「這是不是我自己改的那一份」。 */
+export function originOf(p:{source?:string;fork_of?:string|null;version_no?:number}):string{
+  if(p.fork_of)return '從其他範本另存出來的一份';
+  if(p.source==='fixtures/prompts.json')return '內建起始範本';
+  if(p.source==='班級版')return '班級版加入的';
+  return p.source?`由「${p.source}」匯入`:'來源不明';
 }

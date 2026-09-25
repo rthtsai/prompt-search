@@ -272,3 +272,12 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   .empty-state p{font-size:14px}
   .panel-description,.class-hint{font-size:13px}
 }
+
+/* 關於我們 */
+.about-page{max-width:640px;margin:0 auto;padding:96px 20px 120px;min-height:100dvh}
+.about-brand{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+.about-page h1{font-size:32px;line-height:1.3;margin-bottom:24px;color:var(--foreground)}
+.about-line{font-size:17px;line-height:1.9;color:var(--foreground);margin-bottom:40px}
+.about-back{color:var(--green);font-size:14px;text-decoration:none;border-bottom:1px solid currentColor;padding-bottom:2px}
+.footer-about{color:var(--muted);text-decoration:none;margin-left:16px}
+.footer-about:hover{color:var(--green)}

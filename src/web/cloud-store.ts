@@ -125,7 +125,7 @@ export class CloudStore {
   if(Array.isArray(categories)&&categories.every(c=>typeof c?.name==='string'))this.categoryList=categories;this.writeCache(result);return result;}
  private async stamp(){return JSON.stringify(await this.rpc({op:'stamp'}));}
  /** Upload first, then attach: a failed upload never leaves a broken example on a prompt. */
- async addExample(id:string,file:File,caption:string){
+ async addExample(id:string,file:File,caption:string,role?:'input'|'output'){
   const kind=exampleKind(file);
   let body:Blob=file,ext=kind.ext,mime=kind.mime;
   if(kind.image){const small=await shrinkImage(file);body=small.blob;mime=small.type;ext=small.type==='image/png'?'png':'jpg';
@@ -138,7 +138,7 @@ export class CloudStore {
    {method:'POST',headers:{apikey:this.config.key,'Content-Type':mime,'x-upsert':'false',
      ...(this.config.key.startsWith('eyJ')?{Authorization:'Bearer '+this.config.key}:{})},body});
   if(!response.ok){const detail=await response.text().catch(()=>'');throw new Error('上傳失敗'+(detail?'：'+detail.slice(0,200):`（${response.status}）`));}
-  const entry={kind:kind.image?'image':kind.video?'video':'file',path,name:file.name.slice(0,120),mime,size:body.size,caption:caption.slice(0,200)};
+  const entry={kind:kind.image?'image':kind.video?'video':'file',path,name:file.name.slice(0,120),mime,size:body.size,caption:caption.slice(0,200),...(role?{role}:{})};
   const card=await this.rpc({op:'example_add',id,entry});this.invalidate();return card as CardPrompt;
  }
  /** A text answer needs no upload; it is stored with the prompt. */
@@ -173,8 +173,11 @@ export class CloudStore {
   }
   // 範例說明可以事後改：原本只能在上傳的那一刻寫，寫完就再也碰不到
   if(url.pathname==='/api/examples'&&options.method==='POST'){
-   const r=await this.rpc({op:'example_caption',id:input.id,entry_id:input.entryId,path:input.path,
-     caption:String(input.caption??'').slice(0,200)});
+   // 同一個入口改說明或改角色（原圖／產出），兩者都不會讓內容消失
+   const r=input.role
+    ? await this.rpc({op:'example_role',id:input.id,entry_id:input.entryId,path:input.path,role:input.role})
+    : await this.rpc({op:'example_caption',id:input.id,entry_id:input.entryId,path:input.path,
+        caption:String(input.caption??'').slice(0,200)});
    this.invalidate();return r as T;
   }
   if(url.pathname==='/api/examples'&&options.method==='DELETE'){
@@ -220,5 +223,5 @@ export function cloudApi<T>(path:string,options:RequestInit={}):Promise<T>{
  return current().api<T>(path,options);
 }
 function current(){return store??=new CloudStore({url:process.env.NEXT_PUBLIC_SUPABASE_URL??'',key:process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY??''});}
-export function cloudAddExample(id:string,file:File,caption:string){return current().addExample(id,file,caption);}
+export function cloudAddExample(id:string,file:File,caption:string,role?:'input'|'output'){return current().addExample(id,file,caption,role);}
 export function cloudAddTextExample(id:string,text:string,caption:string){return current().addTextExample(id,text,caption);}

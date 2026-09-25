@@ -80,3 +80,31 @@ test('說明的上限放寬到 140 字，不會再把「輸出…」整段切掉
   assert.ok([...summary].length<=140,`太長了：${[...summary].length}`);
   assert.match(summary,/可填：主題/);
 });
+
+import {coverExample,beforeAfter} from '../src/web/types.ts';
+
+const img=(role:'input'|'output'|undefined,caption:string)=>
+  ({id:caption,kind:'image' as const,role,path:'p/'+caption+'.jpg',caption});
+
+test('封面挑產出，不是第一張上傳的圖', () => {
+  const prompt={examples:[img('input','原圖'),img('output','成品')]};
+  assert.equal(coverExample(prompt)?.caption,'成品');
+  // 沒標角色的舊資料當產出，順序照舊
+  assert.equal(coverExample({examples:[img(undefined,'舊圖A'),img(undefined,'舊圖B')]})?.caption,'舊圖A');
+  assert.equal(coverExample({examples:[]}),null);
+});
+
+test('只有原圖沒有產出時，還是要有封面，不能整張卡片變空白', () => {
+  assert.equal(coverExample({examples:[img('input','原圖')]})?.caption,'原圖');
+});
+
+test('前後對照要一前一後才成立', () => {
+  const both=beforeAfter([img('input','原圖'),img('output','成品'),img('output','另一張')]);
+  assert.equal(both.before?.caption,'原圖');
+  assert.equal(both.after?.caption,'成品');
+  assert.deepEqual(both.rest.map(e=>e.caption),['另一張']);
+  // 只有產出：不排對照，全部照常顯示
+  const only=beforeAfter([img('output','成品'),img('output','另一張')]);
+  assert.equal(only.before,null);
+  assert.deepEqual(only.rest.map(e=>e.caption),['成品','另一張']);
+});

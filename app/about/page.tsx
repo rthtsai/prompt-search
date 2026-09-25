@@ -7,7 +7,7 @@ export default function About(){
   return <main className="about-page">
     <p className="about-brand">Fairy Prompt</p>
     <h1>關於我們</h1>
-    <p className="about-line">Fairy Prompt 由 Wing 與 Richard 共同創辦。</p>
+    <p className="about-line">Fairy Prompt 由 Fairy 與 Richard 共同創辦。</p>
     <a className="about-back" href={base+'/'}>回到 Fairy Prompt</a>
   </main>;
 }

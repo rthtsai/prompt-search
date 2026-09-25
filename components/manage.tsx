@@ -6,7 +6,7 @@ import {Modal} from './ui/dialog';
 import {api,uploadExample,uploadTextExample} from './api';
 import {exampleTypes,exampleUrl} from '../src/web/cloud-store';
 import type {Variable,VariableType} from '../src/domain';
-import {placeholders,type CardPrompt} from '../src/web/types';
+import {placeholders,beforeAfter,type CardPrompt,type ExampleItem} from '../src/web/types';
 
 export const typeLabels:Record<VariableType,string>={text:'自由填寫',select:'下拉選單',radio:'單選按鈕',number:'數字'};
 const splitOptions=(text:string)=>text.split(/[,，、\n]/).map(s=>s.trim()).filter(Boolean);
@@ -136,6 +136,7 @@ export function ExampleGallery({prompt,storage,manage,contribute,onChanged,notif
   const [busy,setBusy]=useState(false),[caption,setCaption]=useState(''),[zoom,setZoom]=useState(''),[text,setText]=useState(''),[writing,setWriting]=useState(false);
   // 事後補說明：editing 記住正在改哪一個範例
   const [editing,setEditing]=useState<string>(''),[draft,setDraft]=useState('');
+  const [asInput,setAsInput]=useState(false);   // 接下來要加的那一張是不是原圖
   const [dropping,setDropping]=useState<typeof items[number]|null>(null);
   const input=useRef<HTMLInputElement>(null);
   const items=prompt.examples??[];
@@ -143,7 +144,7 @@ export function ExampleGallery({prompt,storage,manage,contribute,onChanged,notif
   const kindOf=(e:typeof items[number])=>e.kind??'image';
   async function run(what:Promise<unknown>,done:string){
     setBusy(true);
-    try{await what;setCaption('');setText('');setWriting(false);notify(done);onChanged();}
+    try{await what;setCaption('');setText('');setWriting(false);setAsInput(false);notify(done);onChanged();}
     catch(e){notify((e as Error).message);}finally{setBusy(false);}
   }
   const remove=(e:typeof items[number])=>{
@@ -151,6 +152,9 @@ export function ExampleGallery({prompt,storage,manage,contribute,onChanged,notif
     void run(api('/api/examples',{method:'DELETE',body:JSON.stringify({id:prompt.id,path:e.path,entryId:e.id})}),'已移除範例');
   };
   const keyOf=(e:typeof items[number])=>e.id??e.path??'';
+  const setRole=(e:typeof items[number],role:'input'|'output')=>
+    void run(api('/api/examples',{method:'POST',body:JSON.stringify({id:prompt.id,entryId:e.id,path:e.path,role})}),
+      role==='input'?'已標成原圖':'已標成產出');
   const saveCaption=(e:typeof items[number])=>{
     setEditing('');
     void run(api('/api/examples',{method:'POST',body:JSON.stringify({id:prompt.id,entryId:e.id,path:e.path,caption:draft})}),
@@ -162,14 +166,30 @@ export function ExampleGallery({prompt,storage,manage,contribute,onChanged,notif
     onStart:(text:string)=>{setEditing(keyOf(e));setDraft(text);},onDraft:setDraft,
     onSave:()=>saveCaption(e),onCancel:()=>setEditing('')});
   const size=(n?:number)=>n?n>=1048576?`${(n/1048576).toFixed(1)} MB`:`${Math.max(1,Math.round(n/1024))} KB`:'';
-  const images=items.filter(e=>kindOf(e)==='image'&&e.path),videos=items.filter(e=>kindOf(e)==='video'&&e.path),
+  const pair=beforeAfter(items),rest=pair.rest,videos=items.filter(e=>kindOf(e)==='video'&&e.path),
     others=items.filter(e=>!['image','video'].includes(kindOf(e)));
   return <section className="example-panel">
     <div className="panel-label"><span>03</span><h3>這個 Prompt 做出來的樣子</h3>{items.length>0&&<span className="live-label">{items.length} 個</span>}</div>
-    {images.length>0&&<div className="example-grid">{images.map(e=><figure key={e.id??e.path}>
+    {pair.before&&pair.after&&<div className="example-pair">
+      {[['原圖',pair.before],['這個 Prompt 做出來的',pair.after]].map(([label,e])=>
+        <figure key={(e as ExampleItem).id??(e as ExampleItem).path}>
+          <span className="pair-label">{label as string}</span>
+          <button className="example-open" onClick={()=>setZoom(exampleUrl(storage!,(e as ExampleItem).path!))} aria-label={(e as ExampleItem).caption||(label as string)}>
+            <img src={exampleUrl(storage!,(e as ExampleItem).path!)} alt={(e as ExampleItem).caption||`${prompt.title} 的${label}`} loading="lazy"/></button>
+          <ExampleCaption {...capProps(e as ExampleItem)}/>
+          {contribute&&<button type="button" className="text-link pair-swap"
+            onClick={()=>setRole(e as ExampleItem,(e as ExampleItem).role==='input'?'output':'input')} disabled={busy}>
+            {(e as ExampleItem).role==='input'?'其實這是產出':'其實這是原圖'}</button>}
+          {manage&&<button className="icon-button danger example-remove" aria-label="移除這個範例" disabled={busy} onClick={()=>setDropping(e as ExampleItem)}><Trash2 size={14}/></button>}
+        </figure>)}
+    </div>}
+    {rest.length>0&&<div className="example-grid">{rest.map(e=><figure key={e.id??e.path}>
       <button className="example-open" onClick={()=>setZoom(exampleUrl(storage!,e.path!))} aria-label={e.caption||'放大範例圖片'}>
         <img src={exampleUrl(storage!,e.path!)} alt={e.caption||`${prompt.title} 的範例圖片`} loading="lazy"/></button>
       <ExampleCaption {...capProps(e)}/>
+      {contribute&&<button type="button" className="text-link" disabled={busy}
+        onClick={()=>setRole(e,e.role==='input'?'output':'input')}>
+        {e.role==='input'?'標成產出':'標成原圖'}</button>}
       {manage&&<button className="icon-button danger example-remove" aria-label="移除這個範例" disabled={busy} onClick={()=>setDropping(e)}><Trash2 size={14}/></button>}
     </figure>)}</div>}
     {videos.length>0&&<div className="example-videos">{videos.map(e=><figure key={e.id??e.path}>
@@ -192,8 +212,9 @@ export function ExampleGallery({prompt,storage,manage,contribute,onChanged,notif
         </details>)}</div>}
     {contribute&&items.length<6&&<div className="example-add">
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json" hidden
-        onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void run(uploadExample(prompt.id,f,caption),'範例已加入');}}/>
+        onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void run(uploadExample(prompt.id,f,caption,asInput?'input':'output'),'範例已加入');}}/>
       <input className="example-caption" placeholder="接下來要加的那一個的說明（選填，之後也能改）" maxLength={200} value={caption} onChange={e=>setCaption(e.target.value)}/>
+      <label className="example-asinput"><input type="checkbox" checked={asInput} onChange={e=>setAsInput(e.target.checked)}/>這張是原圖（丟進 AI 之前的那張）</label>
       <Button variant="outline" size="sm" disabled={busy} onClick={()=>input.current?.click()}>{busy?<LoaderCircle size={15} className="spin"/>:<ImagePlus size={15}/>}加圖片或檔案</Button>
       <Button variant="ghost" size="sm" disabled={busy} onClick={()=>setWriting(!writing)}><MessageSquareText size={15}/>貼上文字結果</Button>
     </div>}

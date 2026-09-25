@@ -356,3 +356,15 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 /* 側欄比視窗高時，底部這一塊（身分列＋關於我們）釘在最下面，
    不然在 900px 高的筆電上要捲側欄才看得到。 */
 .sidebar-bottom{position:sticky;bottom:0;background:var(--sidebar);padding-bottom:4px}
+
+/* 前後對照：修圖類的 prompt，看成品不會知道它做了什麼，要和原圖並排才看得懂 */
+.example-pair{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.example-pair figure{position:relative;margin:0;display:grid;gap:7px}
+.pair-label{font-size:11.5px;letter-spacing:.06em;color:var(--muted)}
+.example-pair .example-open{display:block;width:100%;padding:0;border:0;background:none;cursor:zoom-in}
+.example-pair img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;background:#eef1ea}
+.pair-swap{align-self:start}
+.cover-pair{background:rgba(40,92,77,.88)!important;color:#fff!important}
+.example-asinput{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted)}
+.example-asinput input{width:16px;height:16px}
+@media(max-width:560px){.example-pair{grid-template-columns:1fr}}

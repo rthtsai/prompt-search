@@ -240,7 +240,7 @@ export function ConfirmDelete({open,title,origin,scope,busy,onCancel,onConfirm}:
 /** 這一則是哪裡來的——確認視窗要靠它回答「這是不是我自己改的那一份」。 */
 export function originOf(p:{source?:string;fork_of?:string|null;version_no?:number}):string{
   if(p.fork_of)return '從其他範本另存出來的一份';
-  if(p.source==='fixtures/prompts.json')return '內建起始範本';
-  if(p.source==='班級版')return '班級版加入的';
-  return p.source?`由「${p.source}」匯入`:'來源不明';
+  if(p.source==='fixtures/prompts.json')return '站上原本就有的';
+  if(p.source==='貼上文字')return '由使用者貼上加入';
+  return p.source?`來自「${p.source}」`:'來源不明';
 }

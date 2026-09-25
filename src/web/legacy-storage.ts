@@ -60,7 +60,7 @@ export async function collectLegacy():Promise<{snapshots:LegacySnapshot[];errors
   try{const raw=localStorage.getItem(key);if(raw===null)continue;const items=legacyItems(JSON.parse(raw));if(!items.length)continue;
    snapshots.push({label:key,items,clear:async()=>{if(localStorage.getItem(key)!==raw)throw new Error('本機資料在遷移時有變動，請重試');localStorage.removeItem(key);}});
   }catch(e){errors.push(`${key}：${(e as Error).message}`);}
- }}catch{errors.push('無法讀取 localStorage，本機資料未清除');}
+ }}catch{errors.push('這台裝置的舊收藏讀不到，內容沒有被清掉');}
  try{const snapshot=await readIndexedDBSnapshot();if(snapshot)snapshots.push(snapshot);}catch(e){errors.push((e as Error).message);}
  return {snapshots,errors};
 }

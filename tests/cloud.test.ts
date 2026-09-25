@@ -46,7 +46,7 @@ test('RPC 只傳公開金鑰，錯誤不當作成功',async()=>{
  assert.throws(()=>createRpc({...config,key:'sb_secret_bad'}));
  const service='eyJ.'+btoa(JSON.stringify({role:'service_role'}))+'.x';assert.throws(()=>createRpc({...config,key:service}));
  await assert.rejects(createRpc(config,async()=>new Response(JSON.stringify({message:'permission denied'}),{status:403}))({op:'list'}),/permission denied/);
- await assert.rejects(uploadBatches([sample()],async()=>[{...sample(),body:'不同內容'}]),/未確認/);
+ await assert.rejects(uploadBatches([sample()],async()=>[{...sample(),body:'不同內容'}]),/還沒有全部存進去/);
 });
 test('寫入失敗不當作離線新增成功，不寫入快取',async()=>{
  const storage=new Map<string,string>();const old=Object.getOwnPropertyDescriptor(globalThis,'localStorage');

@@ -10,12 +10,12 @@ export type CloudConfig={url:string;key:string};
 export type Rpc=(request:Record<string,unknown>)=>Promise<any>;
 const equivalent=(s:string)=>s.normalize('NFKC').toLowerCase().replace(/\s/gu,'');
 function cards(value:unknown):CardPrompt[]{
- if(!Array.isArray(value)||value.some(p=>!p||typeof p.id!=='string'||typeof p.body!=='string'||!Array.isArray(p.variables)||typeof p.updated_at!=='string'))throw new Error('雲端回傳格式不正確，未清除本機資料');
+ if(!Array.isArray(value)||value.some(p=>!p||typeof p.id!=='string'||typeof p.body!=='string'||!Array.isArray(p.variables)||typeof p.updated_at!=='string'))throw new Error('資料格式不正確，你的內容沒有被清掉');
  return value;
 }
 export function createRpc(config:CloudConfig,transport:typeof fetch=fetch):Rpc {
- if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(config.url))throw new Error('Supabase 專案網址未設定或不正確');
- if(!config.key||config.key.startsWith('sb_secret_'))throw new Error('請設定 Supabase publishable／anon 公開金鑰');
+ if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(config.url))throw new Error('網站設定不完整，請聯絡維護者');
+ if(!config.key||config.key.startsWith('sb_secret_'))throw new Error('網站設定不完整，請聯絡維護者');
  if(config.key.startsWith('eyJ')){try{const payload=JSON.parse(atob(config.key.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));if(payload.role!=='anon')throw new Error();}catch{throw new Error('瀏覽器只能使用 anon 公開金鑰');}}
  return async(request)=>{
   const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),20000);
@@ -31,7 +31,7 @@ export function createRpc(config:CloudConfig,transport:typeof fetch=fetch):Rpc {
 export async function uploadBatches(items:CardPrompt[],rpc:Rpc){
  const saved:CardPrompt[]=[];
  for(let i=0;i<items.length;i+=25){const batch=items.slice(i,i+25);const result=cards(await rpc({op:'import',items:batch}));
-  if(result.length!==batch.length||result.some((p,j)=>equivalent(p.body)!==equivalent(batch[j].body)))throw new Error('雲端未確認所有內容，本機資料已保留');
+  if(result.length!==batch.length||result.some((p,j)=>equivalent(p.body)!==equivalent(batch[j].body)))throw new Error('還沒有全部存進去，你的內容沒有遺失，請重試');
   saved.push(...result);
  }return saved;
 }
@@ -46,7 +46,7 @@ export async function migrateSnapshots(snapshots:LegacySnapshot[],rpc:Rpc){
 export async function readAll(rpc:Rpc):Promise<CardPrompt[]>{
  const all:CardPrompt[]=[],seen=new Set<string>();let cursor:string|undefined;
  for(;;){const page=cards(await rpc({op:'list',cursor}));if(!page.length)break;
-  for(const p of page){if(seen.has(p.id))throw new Error('雲端分頁資料重複，請重試');seen.add(p.id);all.push(p);}
+  for(const p of page){if(seen.has(p.id))throw new Error('讀取時出現重複，請重新整理');seen.add(p.id);all.push(p);}
   cursor=page.at(-1)!.id;if(page.length<200)break;
  }return all;
 }
@@ -115,10 +115,10 @@ export class CloudStore {
  constructor(config:CloudConfig,transport:typeof fetch=fetch){this.config=config;this.transport=transport.bind(globalThis);this.rpc=createRpc(config,transport);}
  private async migrate(){
   return this.migration??=(async()=>{const source=await collectLegacy();const result=await migrateSnapshots(source.snapshots,this.rpc);
-   const errors=[...source.errors,...result.errors];this.migrationMessage=errors.length?'本機資料遷移未完成，原始資料已保留。'+errors.join('；'):result.uploaded?`已將 ${result.uploaded} 則本機 Prompt 同步到共用資料庫。`:'';
-  })().catch(e=>{this.migrationMessage='本機資料已保留，遷移失敗：'+(e as Error).message;});
+   const errors=[...source.errors,...result.errors];this.migrationMessage=errors.length?'舊收藏還沒有全部搬過去，原本的內容沒有遺失。'+errors.join('；'):result.uploaded?`已把這台裝置上的 ${result.uploaded} 則 Prompt 加進大家的辭典。`:'';
+  })().catch(e=>{this.migrationMessage='舊收藏沒有遺失，搬移沒有成功：'+(e as Error).message;});
  }
- private writeCache(prompts:CardPrompt[]){try{localStorage.setItem(CLOUD_CACHE_KEY,JSON.stringify({url:this.config.url,prompts,categories:this.categoryList,savedAt:new Date().toISOString()}));this.cacheWarning='';}catch{this.cacheWarning='雲端已連線，但瀏覽器快取無法儲存。';}}
+ private writeCache(prompts:CardPrompt[]){try{localStorage.setItem(CLOUD_CACHE_KEY,JSON.stringify({url:this.config.url,prompts,categories:this.categoryList,savedAt:new Date().toISOString()}));this.cacheWarning='';}catch{this.cacheWarning='這台裝置無法暫存資料，其他功能仍可正常使用。';}}
  private readCache():CardPrompt[]|null{try{const c=JSON.parse(localStorage.getItem(CLOUD_CACHE_KEY)??'null');if(c?.url!==this.config.url)return null;if(Array.isArray(c.categories))this.categoryList=c.categories;return cards(c.prompts);}catch{return null;}}
  private invalidate(){try{localStorage.removeItem(CLOUD_CACHE_KEY);}catch{/* Cache is never a write queue or migration source. */}}
  private async all(){const [result,categories]=await Promise.all([readAll(this.rpc),this.rpc({op:'categories'}).catch(()=>null)]);
@@ -158,7 +158,7 @@ export class CloudStore {
   if(url.pathname==='/api/stamp')return {stamp:await this.stamp()} as T;
   if(url.pathname==='/api/library'){
    let all:CardPrompt[],offline=false,stamp:string|undefined;let warning=[this.migrationMessage,this.cacheWarning].filter(Boolean).join(' ');
-   try{[all,stamp]=await Promise.all([this.all(),this.stamp().catch(()=>undefined)]);warning=[this.migrationMessage,this.cacheWarning].filter(Boolean).join(' ');}catch(e){const cached=this.readCache();if(!cached)throw new Error([warning,'雲端無法連線：'+(e as Error).message].filter(Boolean).join(' '));all=cached;offline=true;warning+=' 目前顯示離線快取，新增、編輯或刪除必須連上雲端才會儲存。';}
+   try{[all,stamp]=await Promise.all([this.all(),this.stamp().catch(()=>undefined)]);warning=[this.migrationMessage,this.cacheWarning].filter(Boolean).join(' ');}catch(e){const cached=this.readCache();if(!cached)throw new Error([warning,'連不上，請檢查網路後再試：'+(e as Error).message].filter(Boolean).join(' '));all=cached;offline=true;warning+=' 目前顯示的是離線時的舊內容，連上網路後才能新增或修改。';}
    const groups=groupVersions(all);
    const q=url.searchParams.get('q')??'',category=url.searchParams.get('category'),tag=url.searchParams.get('tag'),sort=url.searchParams.get('sort');
    let items=groups.filter(p=>(!category||p.category===category)&&(!tag||p.tags.includes(tag)));
@@ -169,7 +169,7 @@ export class CloudStore {
    return {items,total:groups.length,uses:all.reduce((n,p)=>n+p.use_count,0),categories:names.map(c=>({...c,count:groups.filter(p=>p.category===c.name).length})),tags:[...new Set(groups.flatMap(p=>p.tags))],mode:'cloud',degraded:offline,warning,manage:isMaintainer(),storage:this.config.url,stamp,synced_at:offline?undefined:new Date().toISOString()} as T;
   }
   if(url.pathname==='/api/categories'){
-   const result=await this.rpc({op:'categories_save',items:input.items});if(!Array.isArray(result))throw new Error('雲端未確認分類變更');this.categoryList=result;this.invalidate();return result as T;
+   const result=await this.rpc({op:'categories_save',items:input.items});if(!Array.isArray(result))throw new Error('分類沒有存成功，請重試');this.categoryList=result;this.invalidate();return result as T;
   }
   // 範例說明可以事後改：原本只能在上傳的那一刻寫，寫完就再也碰不到
   if(url.pathname==='/api/examples'&&options.method==='POST'){
@@ -188,7 +188,7 @@ export class CloudStore {
   if(url.pathname==='/api/imports'){
    const parsed=parseInput(input.text,input.source),items:CardPrompt[]=[],errors:ImportJob['errors']=[],seen=new Set<string>();let skipped=0;
    let restored:any[]|undefined;try{const value=JSON.parse(input.text);if(value.version&&Array.isArray(value.prompts))restored=value.prompts;}catch{/* Plain text import. */}
-   if(restored&&restored.length!==parsed.length)throw new Error('備份含有無法匯入的項目，請保留原始備份並檢查');
+   if(restored&&restored.length!==parsed.length)throw new Error('備份裡有幾則無法匯入，請先留著原檔再檢查');
    parsed.forEach((p,index)=>{try{const card=withDescription(restored?legacyCard(restored[index]):organizeBrowser(p.body,p.source)),key=equivalent(card.body);if(seen.has(key)){skipped++;return;}seen.add(key);items.push(card);}catch(e){errors.push({index,message:(e as Error).message});}});
    const job:ImportJob={id:crypto.randomUUID(),status:'review',done:parsed.length,total:parsed.length,items,duplicates:0,skipped,errors};this.jobs.set(job.id,job);return job as T;
   }
@@ -204,7 +204,7 @@ export class CloudStore {
   }
   if(url.pathname.startsWith('/api/prompts/')){
    const id=url.pathname.split('/').at(-1)!;
-   if(options.method==='DELETE'){const result=await this.rpc({op:'delete',id,version:input.version});if(!result?.deleted)throw new Error('雲端未確認刪除');this.invalidate();return result;}
+   if(options.method==='DELETE'){const result=await this.rpc({op:'delete',id,version:input.version});if(!result?.deleted)throw new Error('刪除沒有成功，請重新整理後再試');this.invalidate();return result;}
    if(input.action==='restore'){const result=await this.rpc({op:'restore',id});this.invalidate();return result as T;}
    if(input.action==='edit'){
     const p=draftItem(input,input.previous??[]);

@@ -50,7 +50,7 @@ export async function browserApi<T>(path:string,options:RequestInit={}):Promise<
       return {moved:n};}
     if(input.action==='delete'){const before=data.prompts.length;
       data.prompts=data.prompts.filter(p=>!ids.includes(p.id));return {deleted:before-data.prompts.length};}
-    throw new Error('示範版不支援這個操作');
+    throw new Error('這個版本不支援這個操作');
   }) as T;
   if(url.pathname.startsWith('/api/prompts/')){const id=url.pathname.split('/').at(-1)!;return await transaction(data=>{const p=data.prompts.find(p=>p.id===id);if(!p)throw new Error('找不到這個 Prompt');if(input.action==='use'){fillTemplate(p.body,p.variables,input.values);if(!data.events.includes(input.eventId)){p.use_count++;p.last_used=new Date().toISOString();data.events.push(input.eventId);data.events=data.events.slice(-10000);}return p;}if(input.action==='edit'){const updated=organizeBrowser(input.body,p.source);updated.title=input.title.trim();updated.summary=input.summary.trim();updated.category=input.category;updated.variables=updated.variables.map(v=>p.variables.find(old=>old.name===v.name)??v);validateExtracted({...updated,use_case:updated.title,lang:'zh-Hant'});if(data.prompts.some(old=>(input.fork||old.id!==id)&&normalize(old.body)===normalize(updated.body)))throw new Error('這份內容已在辭典裡，請修改後再儲存');if(input.fork){updated.fork_of=id;data.prompts.push(updated);}else{Object.assign(updated,{id,use_count:p.use_count,last_used:p.last_used,fork_of:p.fork_of});data.prompts[data.prompts.indexOf(p)]=updated;}return updated;}throw new Error('不支援的操作');}) as T;}
   throw new Error('不支援的操作');

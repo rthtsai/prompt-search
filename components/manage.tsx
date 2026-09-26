@@ -270,5 +270,5 @@ export function originOf(p:{source?:string;fork_of?:string|null;version_no?:numb
   if(p.fork_of)return '從其他範本另存出來的一份';
   if(p.source==='fixtures/prompts.json')return '站上原本就有的';
   if(p.source==='貼上文字')return '由使用者貼上加入';
-  return p.source?`來自「${p.source}」`:'來源不明';
+  return '';
 }

@@ -1,6 +1,6 @@
 import type { Variable } from '../domain.ts';
 import { guessRequired } from './fill.ts';
-export type CardPrompt = { id:string; title:string; body:string; summary:string; summary_auto?:boolean; category:string; tags:string[]; variables:Variable[]; model_hint:string[]; use_count:number; last_used:string|null; source:string; fork_of:string|null; updated_at:string; body_en?:string|null; created_at?:string; group_id?:string; version_no?:number; version_note?:string; examples?:{id?:string;kind?:'image'|'video'|'file'|'text';role?:'input'|'output';path?:string;name?:string;mime?:string;size?:number;text?:string;caption:string;added_at?:string}[]; versions?:CardPrompt[]; highlight?:{text:string;ranges:[number,number][]} };
+export type CardPrompt = { /** 只有卡片表面（訪客的列表），全文要另外拿 */ partial?:boolean; has_en?:boolean; id:string; title:string; body:string; summary:string; summary_auto?:boolean; category:string; tags:string[]; variables:Variable[]; model_hint:string[]; use_count:number; last_used:string|null; source:string; fork_of:string|null; updated_at:string; body_en?:string|null; created_at?:string; group_id?:string; version_no?:number; version_note?:string; examples?:{id?:string;kind?:'image'|'video'|'file'|'text';role?:'input'|'output';path?:string;name?:string;mime?:string;size?:number;text?:string;caption:string;added_at?:string}[]; versions?:CardPrompt[]; highlight?:{text:string;ranges:[number,number][]} };
 export type CategoryStat = {name:string;count:number;fixed?:boolean;uses?:number;recent?:number};
 export type Library = { items:CardPrompt[]; total:number; uses:number; categories:CategoryStat[]; tags:string[]; mode:'local'|'cloud'; degraded:boolean; warning?:string; manage?:boolean; storage?:string; stamp?:string; synced_at?:string };
 export type ImportJob = {id:string;status:'processing'|'review'|'accepted'|'error';done:number;total:number;items:CardPrompt[];duplicates:number;skipped:number;errors:{index:number;message:string}[];message?:string};
@@ -95,4 +95,13 @@ export function exampleTier(p:Pick<CardPrompt,'examples'|'versions'>):number{
 export function defaultOrder(a:CardPrompt,b:CardPrompt):number{
   const curated=(p:CardPrompt)=>p.tags.includes('精選範本')?1:0;
   return curated(a)-curated(b)||exampleTier(b)-exampleTier(a)||b.updated_at.localeCompare(a.updated_at);
+}
+
+/** 列表裡只要有一張是「只有表面」的卡片，搜尋就得交給資料庫做 */
+export function groupFullness(items:Pick<CardPrompt,'partial'>[]):'full'|'partial'{
+  return items.some(p=>p.partial)?'partial':'full';
+}
+/** 詳細頁需要全文：這張卡或它的任何一個版本還只有表面，就要先去拿 */
+export function needsFull(p:Pick<CardPrompt,'partial'|'versions'>|null):boolean{
+  return !!p&&(!!p.partial||!!p.versions?.some(v=>v.partial));
 }

@@ -150,3 +150,19 @@ test('預設排序：精選範本在後；同組內有圖 > 有檔案或文字 >
   // 範例掛在舊版本上也算
   assert.equal(exampleTier({examples:[],versions:[{examples:[]},{examples:[img]}]} as any),2);
 });
+
+import {describeAgent,looksLikeScraper} from '../src/web/access.ts';
+test('存取監控：把 User-Agent 翻成人話，並挑出像爬蟲的來源',()=>{
+  assert.equal(describeAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'),'iPhone Safari');
+  assert.equal(describeAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/129.0 Safari/537.36'),'Mac Chrome');
+  assert.equal(describeAgent('Mozilla/5.0 (iPhone...) Line/14.1.0'),'iPhone LINE 內建瀏覽器');
+  assert.equal(describeAgent('python-requests/2.32.3'),'Python 程式');
+  assert.equal(describeAgent(null),'—');
+  const row={ip:'1.2.3.4',requests:5,gets:3,distinct_prompts:3,searches:1,visits:1,limited:0,first_seen:'',last_seen:'',ua:'Mozilla/5.0 (Macintosh) Chrome/129.0',blocked:false};
+  assert.equal(looksLikeScraper(row,24),'');
+  assert.match(looksLikeScraper({...row,ua:'python-requests/2.32'},24),/程式或爬蟲/);
+  assert.match(looksLikeScraper({...row,limited:2},24),/被擋下/);
+  assert.match(looksLikeScraper({...row,visits:0},24),/直接拿全文/);
+  assert.match(looksLikeScraper({...row,distinct_prompts:130},24),/130 則/);
+  assert.equal(looksLikeScraper({...row,limited:5,blocked:true},24),'','已封鎖的不再標可疑');
+});

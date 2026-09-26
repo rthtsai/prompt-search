@@ -7,9 +7,10 @@ import {Modal} from './ui/dialog';
 import {CATEGORIES} from '../src/domain';
 import {api,cloudMode,pagesDemo} from './api';
 import {BulkBar,CategoryManager,ConfirmDelete,ExampleGallery,MergeDialog,VariableEditor,VariableInput,originOf} from './manage';
+import {AccessMonitor} from './access-monitor';
 import {exampleUrl} from '../src/web/cloud-store';
 import type {Variable} from '../src/domain';
-import {type CardPrompt,type Library,type ImportJob,fillTemplate,placeholders,coverExample,beforeAfter,rankCategories} from '../src/web/types';
+import {type CardPrompt,type Library,type ImportJob,fillTemplate,placeholders,coverExample,beforeAfter,rankCategories,needsFull} from '../src/web/types';
 import {fillState,copyLabel,progressLabel,blankWarning,previewSegments} from '../src/web/fill';
 import {adoptMaintainer} from '../src/web/maintainer';
 import {describe as autoDescribe} from '../src/web/describe';
@@ -36,7 +37,7 @@ export default function PromptApp() {
   const searchRef=useRef<HTMLInputElement>(null),toastTimer=useRef<ReturnType<typeof setTimeout>|null>(null),resultsRef=useRef<HTMLDivElement>(null);
   const notify=useCallback((message:string,undo?:()=>void)=>{setToast({message,undo});if(toastTimer.current) clearTimeout(toastTimer.current);toastTimer.current=setTimeout(()=>setToast(null),undo?10000:4500);},[]);
   const reload=()=>setRefresh(v=>v+1);
-  const [selectMode,setSelectMode]=useState(false),[checked,setChecked]=useState<Set<string>>(new Set()),[managerOpen,setManagerOpen]=useState(false),[mergeItems,setMergeItems]=useState<CardPrompt[]|null>(null),[bulkBusy,setBulkBusy]=useState(false);
+  const [selectMode,setSelectMode]=useState(false),[checked,setChecked]=useState<Set<string>>(new Set()),[managerOpen,setManagerOpen]=useState(false),[monitorOpen,setMonitorOpen]=useState(false),[mergeItems,setMergeItems]=useState<CardPrompt[]|null>(null),[bulkBusy,setBulkBusy]=useState(false);
   const manage=!!data?.manage,categoryNames=data?.categories.map(c=>c.name)??[...CATEGORIES];
   // 側邊欄與首頁分類塊：依使用量自動排序；一般訪客看不到空分類，維護者要能把卡片拖進空分類，所以保留
   const rankedNames=data?rankCategories(data.categories,{includeEmpty:manage}).map(c=>c.name):featuredCategories;
@@ -58,6 +59,13 @@ export default function PromptApp() {
     finally{setBulkBusy(false);}
   }
 
+  // 訪客的列表只有卡片表面；打開詳細頁時才去拿這一則（連同所有版本）的全文
+  const [fullError,setFullError]=useState('');
+  const wantFull=needsFull(detail);
+  useEffect(()=>{if(!detail||!wantFull)return;let stop=false;setFullError('');
+    api<CardPrompt>('/api/prompt?id='+encodeURIComponent(detail.id)).then(full=>{if(!stop)setDetail(d=>d&&groupKey(d)===groupKey(full)?full:d);})
+      .catch(e=>{if(!stop)setFullError((e as Error).message);});
+    return()=>{stop=true;};},[detail?.id,detail?.updated_at,wantFull]);
   useEffect(()=>{if(!detail||!data)return;const fresh=data.items.find(x=>groupKey(x)===groupKey(detail));if(fresh&&(fresh.id!==detail.id||fresh.updated_at!==detail.updated_at||(fresh.versions?.length??1)!==(detail.versions?.length??1)))setDetail(fresh);},[data]);
   const [dragging,setDragging]=useState<string|null>(null),[dropTarget,setDropTarget]=useState('');
   // Dragging a card that is part of the current selection moves the whole selection.
@@ -82,7 +90,17 @@ export default function PromptApp() {
   const navigate=(next:'home'|'library'|'recent',nextCategory='')=>{setView(next);setQuery('');setCategory(nextCategory);setTag('');setSort('all');setMobileNav(false);};
   const usePrompt=async(p:CardPrompt)=>{
     if(p.variables.length){setDetail(p);return;}
-    try{await navigator.clipboard.writeText(p.body);try{await api('/api/prompts/'+p.id,{method:'POST',body:JSON.stringify({action:'use',values:{},eventId:crypto.randomUUID()})});notify('已複製，貼上就能開始使用');reload();}catch{notify('已複製，但使用紀錄暫時未儲存');}}catch{setDetail(p);notify('瀏覽器未允許複製，請在預覽中選取文字');}
+    try{
+      if(p.partial){
+        // 還沒有全文：一邊拿一邊交給剪貼簿。Safari 要求在同一次點擊裡就交出 ClipboardItem，不能先 await 再寫
+        const text=api<CardPrompt>('/api/prompt?id='+encodeURIComponent(p.id)).then(f=>f.body);
+        text.catch(()=>{});
+        try{
+          if(typeof ClipboardItem!=='undefined'&&navigator.clipboard.write)await navigator.clipboard.write([new ClipboardItem({'text/plain':text.then(t=>new Blob([t],{type:'text/plain'}))})]);
+          else await navigator.clipboard.writeText(await text);
+        }catch(e){const why=await text.then(()=>'',err=>(err as Error).message);if(why){notify(why);return;}throw e;}
+      }else await navigator.clipboard.writeText(p.body);
+      try{await api('/api/prompts/'+p.id,{method:'POST',body:JSON.stringify({action:'use',values:{},eventId:crypto.randomUUID()})});notify('已複製，貼上就能開始使用');reload();}catch{notify('已複製，但使用紀錄暫時未儲存');}}catch{setDetail(p);notify('瀏覽器未允許複製，請在預覽中選取文字');}
   };
   useEffect(()=>{
     const handler=(event:KeyboardEvent)=>{
@@ -107,7 +125,7 @@ export default function PromptApp() {
         <button className={view==='recent'?'active':''} onClick={()=>navigate('recent')}><Clock3 size={19}/>最近使用</button>
       </nav>
       <div className="nav-divider"/><div className="section-eyebrow sidebar-heading">依分類瀏覽</div>
-      <nav className="category-nav" aria-label="分類導覽">{rankedNames.map(name=><button className={`${category===name?'active':''} ${dropTarget===name?'drop-over':''}`} key={name} onClick={()=>navigate('library',name)} {...dropProps(name)}><CategoryIcon name={name} size={17}/><span>{name}</span><small>{data?.categories.find(c=>c.name===name)?.count??0}</small></button>)}{manage?<button onClick={()=>{setManagerOpen(true);setMobileNav(false);}}><FolderCog size={17}/><span>管理分類</span></button>:<button onClick={()=>{navigate('home');setAllCategories(true);}}><MoreHorizontal size={18}/><span>所有分類</span><small>{categoryNames.length}</small></button>}</nav>
+      <nav className="category-nav" aria-label="分類導覽">{rankedNames.map(name=><button className={`${category===name?'active':''} ${dropTarget===name?'drop-over':''}`} key={name} onClick={()=>navigate('library',name)} {...dropProps(name)}><CategoryIcon name={name} size={17}/><span>{name}</span><small>{data?.categories.find(c=>c.name===name)?.count??0}</small></button>)}{manage?<><button onClick={()=>{setManagerOpen(true);setMobileNav(false);}}><FolderCog size={17}/><span>管理分類</span></button><button onClick={()=>{setMonitorOpen(true);setMobileNav(false);}}><ShieldCheck size={17}/><span>存取監控</span></button></>:<button onClick={()=>{navigate('home');setAllCategories(true);}}><MoreHorizontal size={18}/><span>所有分類</span><small>{categoryNames.length}</small></button>}</nav>
       <div className="sidebar-bottom"><div className="collect-note"><span className="note-leaf"><Leaf size={21}/></span><strong>讓好用的 Prompt，<br/>有個自己的家。</strong><p>把散落的靈感收進辭典，<br/>下次需要時，一找就有。</p><button onClick={()=>setImportOpen(true)}>匯入我的 Prompt<ArrowUpRight size={15}/></button></div>
         <button className="profile" onClick={()=>setHelpOpen(true)}><span className="avatar">我</span><span>{cloudMode?'共用辭典':'我的辭典'}<small><i/>{cloudMode?'所有人共用同一份':'只存在這台裝置'}</small></span><Settings2 size={17}/></button>
     {/* 頁尾那個要捲很久才看得到；側欄這個每一頁都在 */}
@@ -150,8 +168,9 @@ export default function PromptApp() {
       {home&&<section className="import-banner"><div className="banner-icon"><FolderOpen size={29} strokeWidth={1.3}/><span>+</span></div><div><h3>那些散落各處的好 Prompt，都收進來吧。</h3><p>貼上文字，或匯入 ChatGPT、Claude 匯出檔，整理成隨時可用的範本。</p></div><Button variant="outline" onClick={()=>setImportOpen(true)}><Upload size={16}/>開始匯入<ArrowRight size={15}/></Button></section>}
       <footer className="page-footer"><span><span className="status-dot"/>{cloudMode?'共用辭典':'私人收藏'}</span><span>找到。改一下。拿去用。<Leaf size={13}/></span><a className="footer-about" href={(process.env.NEXT_PUBLIC_BASE_PATH??'')+'/about/'}>關於我們</a><small className="footer-terms">© 2026 Fairy Prompt・內容僅供個人使用，請勿以程式大量擷取或轉載</small></footer>
     </main></div>
-    <PromptDetail prompt={detail} categories={categoryNames} manage={manage} storage={data?.storage} onClose={()=>setDetail(null)} onSaved={p=>{setDetail(p);reload();}} notify={notify} onUsed={reload} onDeleted={()=>{setDetail(null);reload();}}/>
+    <PromptDetail prompt={detail} loadError={fullError} categories={categoryNames} manage={manage} storage={data?.storage} onClose={()=>setDetail(null)} onSaved={p=>{setDetail(p);reload();}} notify={notify} onUsed={reload} onDeleted={()=>{setDetail(null);reload();}}/>
     {manage&&<BulkBar selected={visible.filter(p=>checked.has(groupKey(p)))} categories={categoryNames} busy={bulkBusy} onMove={c=>void bulk('move',visible.filter(p=>checked.has(groupKey(p))),c)} onDelete={()=>setPendingDelete(visible.filter(p=>checked.has(groupKey(p))))} onMerge={()=>setMergeItems(visible.filter(p=>checked.has(groupKey(p))))} onClear={()=>setChecked(new Set())}/>}
+    {manage&&<AccessMonitor open={monitorOpen} onOpenChange={setMonitorOpen} notify={notify}/>}
     <CategoryManager open={managerOpen} onOpenChange={setManagerOpen} categories={data?.categories??[]} onSaved={m=>{notify(m);if(category&&!categoryNames.includes(category))setCategory('');reload();}}/>
     <MergeDialog items={mergeItems} onClose={()=>setMergeItems(null)} onMerged={()=>{setMergeItems(null);setChecked(new Set());notify('已合併成同一個 Prompt，預設顯示最新版');reload();}}/>
     <ImportDialog open={importOpen} onOpenChange={setImportOpen} onAccepted={()=>{reload();navigate('library');notify('已加入你的辭典。分類是依關鍵字建議的，隨時可以在卡片上改。');}}categories={categoryNames} />
@@ -172,7 +191,7 @@ export default function PromptApp() {
 
 type EditMode=''|'edit'|'version'|'fork';
 const nextTitle=(title:string,n:number)=>/V\d+\s*$/i.test(title)?title.replace(/V\d+\s*$/i,'V'+n):`${title} V${n}`;
-function PromptDetail({prompt,categories,manage,storage,onClose,onSaved,notify,onUsed,onDeleted}:{prompt:CardPrompt|null;categories:string[];manage:boolean;storage?:string;onClose:()=>void;onSaved:(p:CardPrompt)=>void;notify:(s:string,undo?:()=>void)=>void;onUsed:()=>void;onDeleted:()=>void}) {
+function PromptDetail({prompt,categories,manage,storage,onClose,onSaved,notify,onUsed,onDeleted,loadError=''}:{loadError?:string;prompt:CardPrompt|null;categories:string[];manage:boolean;storage?:string;onClose:()=>void;onSaved:(p:CardPrompt)=>void;notify:(s:string,undo?:()=>void)=>void;onUsed:()=>void;onDeleted:()=>void}) {
   const [values,setValues]=useState<Record<string,string>>({}),[error,setError]=useState(''),[copying,setCopying]=useState(false),[mode,setMode]=useState<EditMode>('');
   const [shownId,setShownId]=useState(''),[lang,setLang]=useState<'zh'|'en'>('zh');
   const [draft,setDraft]=useState({title:'',body:'',body_en:'',summary:'',summary_auto:false,category:'',version_note:'',variables:[] as Variable[]});
@@ -227,6 +246,8 @@ function PromptDetail({prompt,categories,manage,storage,onClose,onSaved,notify,o
     notify(one?`已刪除 V${shown.version_no}`:'已從共用辭典刪除',
       ()=>{void api('/api/prompts/'+gone,{method:'POST',body:JSON.stringify({action:'restore'})})
         .then(()=>{notify('已復原');onDeleted();}).catch(e=>notify('復原失敗：'+(e as Error).message));});}catch(e){setError((e as Error).message);}finally{setCopying(false);}}
+  if(prompt&&needsFull(prompt))return <Modal open onOpenChange={open=>{if(!open)onClose();}} title={prompt.title} description={prompt.summary} wide>
+    <div className="detail-loading" role="status">{loadError?<><TriangleAlert size={16}/>{loadError}</>:<><LoaderCircle size={16} className="spin"/>正在載入完整內容…</>}</div></Modal>;
   const title=mode==='fork'?'另存一份新範本':mode==='version'?'存成新版本':mode==='edit'?'編輯 Prompt':shown?.title??'Prompt';
   return <Modal open={!!prompt} onOpenChange={open=>{if(!open)onClose();}} title={title} description={mode?(mode==='version'?'原本的版本會保留，新版本會成為預設顯示的最新版。':'調整內容，用 {{變數名稱}} 保留可以替換的地方。'):shown?.summary??''} wide>{prompt&&shown&&<>
     {mode?<div className="editor-form"><label>名稱<input value={draft.title} maxLength={160} onChange={e=>setDraft({...draft,title:e.target.value})}/></label><div className="editor-row"><label>分類<select value={draft.category} onChange={e=>setDraft({...draft,category:e.target.value})}>{(categories.includes(draft.category)?categories:[draft.category,...categories]).map(c=><option key={c}>{c}</option>)}</select></label><label>說明{draft.summary_auto&&<span className="auto-chip">自動</span>}<input placeholder="留白會自動產生" value={draft.summary} onChange={e=>setDraft({...draft,summary:e.target.value,summary_auto:false})}/><button type="button" className="text-link" onClick={()=>setDraft(d=>({...d,summary:autoDescribe(d.body,{title:d.title,variables:d.variables}),summary_auto:true}))}><Wand2 size={13}/>重新產生</button></label></div>

@@ -2,8 +2,9 @@ import {CATEGORIES,type Variable} from '../domain.ts';
 import {withDescription} from './describe.ts';
 import {parseInput} from '../parser.ts';
 import {organizeBrowser,searchBrowser} from './browser-store.ts';
+import {rewrite,snippet} from '../text-shared.ts';
 import {maintainerToken,isMaintainer} from './maintainer.ts';
-import {type CardPrompt,type ImportJob,mergeVariables,categoryStats,defaultOrder} from './types.ts';
+import {type CardPrompt,type ImportJob,mergeVariables,categoryStats,defaultOrder,groupFullness} from './types.ts';
 import {CLOUD_CACHE_KEY,collectLegacy,legacyCard,legacyBackup,type LegacySnapshot} from './legacy-storage.ts';
 
 export type CloudConfig={url:string;key:string};
@@ -24,7 +25,9 @@ export function createRpc(config:CloudConfig,transport:typeof fetch=fetch):Rpc {
    const token=maintainerToken();
    const payload=token?{...request,maintainer:token}:request;
    const response=await transport(config.url+'/rest/v1/rpc/prompt_library',{method:'POST',headers:{apikey:config.key,'Content-Type':'application/json',...(config.key.startsWith('eyJ')?{Authorization:'Bearer '+config.key}:{})},body:JSON.stringify({request:payload}),signal:controller.signal,cache:'no-store'});
-   const result=await response.json();if(!response.ok)throw new Error(result.message??`雲端請求失敗 (${response.status})`);return result;
+   const result=await response.json();if(!response.ok)throw new Error(result.message??`雲端請求失敗 (${response.status})`);
+   if(result&&typeof result==='object'&&!Array.isArray(result)&&result.rate_limited)throw new Error(String(result.error??'操作太頻繁了，請稍候再試'));
+   return result;
   }catch(e){if((e as Error).name==='AbortError')throw new Error('連線逾時，資料尚未確認儲存，請重試');throw e;}finally{clearTimeout(timeout);}
  };
 }
@@ -112,6 +115,11 @@ export class CloudStore {
  private rpc:Rpc;private jobs=new Map<string,ImportJob>();private migration:Promise<void>|undefined;
  private migrationMessage='';private cacheWarning='';private categoryList:CloudCategory[]=CATEGORIES.map(name=>({name,fixed:name==='其他'}));
  private config:CloudConfig;private transport:typeof fetch;
+ /** 已經拿過全文的版本；列表重新載入時，同一版（updated_at 相同）就直接補回全文，不用再拿一次 */
+ private full=new Map<string,CardPrompt>();
+ private remember(list:CardPrompt[]){for(const p of list)if(!p.partial)this.full.set(p.id,p);}
+ private withFull(list:CardPrompt[]):CardPrompt[]{return list.map(p=>{if(!p.partial)return p;const f=this.full.get(p.id);
+  return f&&f.updated_at===p.updated_at?{...p,body:f.body,body_en:f.body_en,partial:false}:p;});}
  constructor(config:CloudConfig,transport:typeof fetch=fetch){this.config=config;this.transport=transport.bind(globalThis);this.rpc=createRpc(config,transport);}
  private async migrate(){
   return this.migration??=(async()=>{const source=await collectLegacy();const result=await migrateSnapshots(source.snapshots,this.rpc);
@@ -121,8 +129,16 @@ export class CloudStore {
  private writeCache(prompts:CardPrompt[]){try{localStorage.setItem(CLOUD_CACHE_KEY,JSON.stringify({url:this.config.url,prompts,categories:this.categoryList,savedAt:new Date().toISOString()}));this.cacheWarning='';}catch{this.cacheWarning='這台裝置無法暫存資料，其他功能仍可正常使用。';}}
  private readCache():CardPrompt[]|null{try{const c=JSON.parse(localStorage.getItem(CLOUD_CACHE_KEY)??'null');if(c?.url!==this.config.url)return null;if(Array.isArray(c.categories))this.categoryList=c.categories;return cards(c.prompts);}catch{return null;}}
  private invalidate(){try{localStorage.removeItem(CLOUD_CACHE_KEY);}catch{/* Cache is never a write queue or migration source. */}}
- private async all(){const [result,categories]=await Promise.all([readAll(this.rpc),this.rpc({op:'categories'}).catch(()=>null)]);
+ private async all(){const [raw,categories]=await Promise.all([readAll(this.rpc),this.rpc({op:'categories'}).catch(()=>null)]);const result=this.withFull(raw);
   if(Array.isArray(categories)&&categories.every(c=>typeof c?.name==='string'))this.categoryList=categories;this.writeCache(result);return result;}
+ /** 訪客手上只有卡片表面，全文比對交給資料庫；離線時退回只比對標題與摘要 */
+ private async search(items:CardPrompt[],q:string):Promise<CardPrompt[]>{
+  const query=rewrite(q);let hits:{group_id:string;score:number;text:string}[];
+  try{hits=await this.rpc({op:'search',terms:query.terms});}catch(e){if((e as Error).message.includes('太頻繁'))throw e;return searchBrowser(items,q);}
+  const byGroup=new Map(items.map(p=>[p.group_id??p.id,p]));
+  return hits.flatMap(h=>{const p=byGroup.get(h.group_id);if(!p)return [];return [{p,text:h.text,score:h.score*(query.recent&&p.last_used?1.25:1)}];})
+   .sort((a,b)=>b.score-a.score).slice(0,10).map(({p,text})=>({...p,highlight:snippet(text,query.terms)}));
+ }
  private async stamp(){return JSON.stringify(await this.rpc({op:'stamp'}));}
  /** Upload first, then attach: a failed upload never leaves a broken example on a prompt. */
  async addExample(id:string,file:File,caption:string,role?:'input'|'output'){
@@ -163,7 +179,7 @@ export class CloudStore {
    const groups=groupVersions(all);
    const q=url.searchParams.get('q')??'',category=url.searchParams.get('category'),tag=url.searchParams.get('tag'),sort=url.searchParams.get('sort');
    let items=groups.filter(p=>(!category||p.category===category)&&(!tag||p.tags.includes(tag)));
-   if(q.trim())items=searchBrowser(items,q);
+   if(q.trim())items=groupFullness(items)==='full'?searchBrowser(items,q):await this.search(items,q);
    if(sort==='recent')items=items.filter(p=>p.last_used).sort((a,b)=>(b.last_used??'').localeCompare(a.last_used??''));
    else if(sort==='popular')items.sort((a,b)=>b.use_count-a.use_count);else if(!q){
     items.sort(defaultOrder);
@@ -185,6 +201,16 @@ export class CloudStore {
   }
   if(url.pathname==='/api/examples'&&options.method==='DELETE'){
    const r=await this.rpc({op:'example_remove',id:input.id,entry:{id:input.entryId,path:input.path}});this.invalidate();return r as T;
+  }
+  // 維護者：來源 IP 監控（權限在資料庫端檢查）
+  if(url.pathname==='/api/access')return await this.rpc({op:'access_stats',hours:Number(url.searchParams.get('hours')??24)}) as T;
+  if(url.pathname==='/api/access/recent')return await this.rpc({op:'access_recent',ip:url.searchParams.get('ip')??''}) as T;
+  if(url.pathname==='/api/access/block')return await this.rpc({op:'ip_block',ip:input.ip,reason:input.reason??''}) as T;
+  if(url.pathname==='/api/access/unblock')return await this.rpc({op:'ip_unblock',ip:input.ip}) as T;
+  if(url.pathname==='/api/prompt'){
+   // 點開卡片才拿全文：一次拿整組版本
+   const list=cards(await this.rpc({op:'get',id:url.searchParams.get('id')??''}));this.remember(list);
+   const [card]=groupVersions(list);if(!card)throw new Error('找不到這個 Prompt，請重新整理');return card as T;
   }
   if(url.pathname==='/api/bulk'){
    const ids:string[]=input.ids;if(!Array.isArray(ids)||!ids.length)throw new Error('請先勾選 Prompt');

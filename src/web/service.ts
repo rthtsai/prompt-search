@@ -8,7 +8,7 @@ import { CATEGORIES, type Prompt, type Usage, validateExtracted, searchable, str
 import { SearchService } from '../search.ts';
 import { prepareImport, type ImportPreview } from '../importer.ts';
 import { fingerprint,simhash } from '../text.ts';
-import { type CardPrompt,type ImportJob,type Library,fillTemplate } from './types.ts';
+import { type CardPrompt,type ImportJob,type Library,fillTemplate ,categoryStats} from './types.ts';
 
 type Data = {version:1;prompts:Prompt[];usages:Usage[];events:string[];acceptedJobs:string[]};
 type InternalJob = ImportJob & {preview?:ImportPreview};
@@ -62,7 +62,7 @@ export class LocalApp {
     if(sort==='recent') items=items.filter(p=>p.last_used).sort((a,b)=>(b.last_used??'').localeCompare(a.last_used??''));
     else if(sort==='popular') items.sort((a,b)=>b.use_count-a.use_count);
     else if(!query) items.sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
-    return {items,total:all.length,uses:all.reduce((n,p)=>n+p.use_count,0),categories:CATEGORIES.map(name=>({name,count:all.filter(p=>p.category===name).length})),tags:[...new Set(all.flatMap(p=>p.tags))],mode:'local',degraded};
+    return {items,total:all.length,uses:all.reduce((n,p)=>n+p.use_count,0),categories:categoryStats(CATEGORIES.map(name=>({name})),all),tags:[...new Set(all.flatMap(p=>p.tags))],mode:'local',degraded};
   }
   async used(id:string,values:Record<string,string>,eventId:string) {
     if(!/^[a-f0-9-]{36}$/i.test(eventId)) throw new Error('使用紀錄識別碼錯誤');

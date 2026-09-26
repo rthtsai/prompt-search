@@ -108,3 +108,26 @@ test('前後對照要一前一後才成立', () => {
   assert.equal(only.before,null);
   assert.deepEqual(only.rest.map(e=>e.caption),['成品','另一張']);
 });
+
+import {categoryStats,rankCategories} from '../src/web/types.ts';
+test('分類依使用量自動排序，其他永遠最後，空分類預設不顯示',()=>{
+  const now=Date.parse('2026-09-26T00:00:00Z');
+  const names=['寫作','快速指令','圖像生成','其他','資料分析'].map(name=>({name}));
+  const prompts=[
+    {category:'快速指令',use_count:0,last_used:null},{category:'快速指令',use_count:0,last_used:null},
+    {category:'快速指令',use_count:0,last_used:null},
+    {category:'圖像生成',use_count:3,last_used:'2026-09-25T10:00:00Z'},
+    {category:'資料分析',use_count:6,last_used:'2026-08-01T10:00:00Z'},
+    {category:'其他',use_count:50,last_used:'2026-09-25T10:00:00Z'},
+  ];
+  const stats=categoryStats(names,prompts,now);
+  assert.deepEqual(stats.find(c=>c.name==='圖像生成'),{name:'圖像生成',count:1,uses:3,recent:1});
+  const order=rankCategories(stats).map(c=>c.name);
+  // 圖像生成 3+1×5=8 > 資料分析 6（兩個月前用的，沒有近期加分）> 快速指令 0 但則數多；寫作是空的不出現；其他再多人用也在最後
+  assert.deepEqual(order,['圖像生成','資料分析','快速指令','其他']);
+  assert.deepEqual(rankCategories(stats,{includeEmpty:true}).map(c=>c.name),['圖像生成','資料分析','快速指令','寫作','其他']);
+});
+test('完全沒有使用紀錄時，照則數排，再照原本的手動順序',()=>{
+  const cats=[{name:'A',count:1},{name:'B',count:5},{name:'C',count:1}];
+  assert.deepEqual(rankCategories(cats).map(c=>c.name),['B','A','C']);
+});

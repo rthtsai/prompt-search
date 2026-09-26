@@ -368,3 +368,9 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 .example-asinput{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted)}
 .example-asinput input{width:16px;height:16px}
 @media(max-width:560px){.example-pair{grid-template-columns:1fr}}
+/* 使用條款：頁尾獨立一行、關於我們一小段 */
+.page-footer{flex-wrap:wrap}
+.footer-terms{flex-basis:100%;margin-top:10px;font-size:12px;letter-spacing:0;color:#9aa596;text-align:center}
+.about-line{margin-bottom:32px}
+.about-sub{font-size:15px;font-weight:650;margin:0 0 8px;color:var(--foreground)}
+.about-terms{font-size:14px;line-height:1.85;color:var(--muted);margin-bottom:40px}

@@ -151,6 +151,7 @@ export class CloudStore {
   const url=new URL(path,'https://local.invalid');const input=options.body?JSON.parse(String(options.body)):{};
   if(url.pathname==='/api/migration/retry'){this.migration=undefined;await this.migrate();return {} as T;}
   if(url.pathname==='/api/export'){
+   if(!isMaintainer())throw new Error('只有維護者可以下載備份');
    // Export never silently substitutes an incomplete cache for the full cloud library.
    const prompts=await this.all();const legacy=await legacyBackup();return {version:2,exported_at:new Date().toISOString(),storage:'supabase',prompts,unmigrated_local:legacy} as T;
   }

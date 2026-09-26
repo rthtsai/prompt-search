@@ -166,3 +166,12 @@ test('存取監控：把 User-Agent 翻成人話，並挑出像爬蟲的來源',
   assert.match(looksLikeScraper({...row,distinct_prompts:130},24),/130 則/);
   assert.equal(looksLikeScraper({...row,limited:5,blocked:true},24),'','已封鎖的不再標可疑');
 });
+
+import {adoptMaintainer} from '../src/web/maintainer.ts';
+test('網址可以同時帶維護者與 Agent token，兩個都會被收下並從網址拿掉',()=>{
+  const a=readFromUrl('https://x.dev/prompt-search/?agent=ag123&v=rec','agent');
+  assert.equal(a.token,'ag123');assert.equal(a.cleaned,'/prompt-search/?v=rec');
+  let replaced='';
+  adoptMaintainer({href:'https://x.dev/prompt-search/?maintainer=m1&agent=a1&v=rec',replace(u:string){replaced=u;}});
+  assert.equal(replaced,'/prompt-search/?v=rec');
+});

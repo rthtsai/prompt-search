@@ -7,6 +7,11 @@
 --   * get／search／list（第一頁）都記錄來源 IP，同一個來源拿太快就先擋
 --   * 其他會回傳卡片的操作（補範例說明、使用紀錄…）對訪客也只回表面，不能拿來繞路
 --   * 維護者不受以上限制，並可以查看存取統計、封鎖或解除封鎖某個 IP
+--   * Agent 專用 token：跟維護者一樣不受限流、拿得到全文，但不能刪除、編輯、封鎖。
+--     給自己的 AI Agent 用；外流了最壞只是內容被讀走，不會被刪光。
+--     token 同樣不進版控，只存 sha256：
+--       INSERT INTO public.app_secret(name,hash) VALUES('agent',encode(sha256(convert_to('<token>','UTF8')),'hex'))
+--       ON CONFLICT (name) DO UPDATE SET hash=excluded.hash, updated_at=now();
 --
 -- 被擋時回傳 {"error":…, "rate_limited":true} 而不是丟例外，因為丟例外會讓
 -- 「這次被擋」的紀錄一起被回滾，監控就看不到誰在狂打。
@@ -100,6 +105,17 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.shared_guard(text, uuid) FROM PUBLIC, anon, authenticated;
 
+-- ---------------------------------------------------------------- Agent 專用 token
+CREATE OR REPLACE FUNCTION public.shared_is_agent(token text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.app_secret s
+    WHERE s.name = 'agent'
+      AND length(coalesce(token,'')) >= 16
+      AND s.hash = encode(sha256(convert_to(token,'UTF8')),'hex'));
+$$;
+REVOKE ALL ON FUNCTION public.shared_is_agent(text) FROM PUBLIC, anon, authenticated;
+
 -- ---------------------------------------------------------------- 卡片表面
 CREATE OR REPLACE FUNCTION public.shared_card_surface(c jsonb) RETURNS jsonb
 LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
@@ -127,6 +143,8 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
   op   text    := request->>'op';
   is_m boolean := public.shared_is_maintainer(request->>'maintainer');
+  -- 受信任＝不限流、拿全文。維護者與自己的 Agent 都是；但只有維護者能做破壞性操作
+  trusted boolean := is_m OR public.shared_is_agent(request->>'agent');
   n integer; p public.prompt; g uuid; msg text; hrs integer; result jsonb;
   ws constant uuid := '00000000-0000-4000-8000-000000000001';
 BEGIN
@@ -135,8 +153,8 @@ BEGIN
     RAISE EXCEPTION '這個操作保留給維護者。你仍然可以新增、另存一份與複製。';
   END IF;
 
-  -- 頻率限制與封鎖（維護者不受限）
-  IF NOT is_m THEN
+  -- 頻率限制與封鎖（維護者與 Agent 不受限）
+  IF NOT trusted THEN
     IF op = 'list' AND coalesce(request->>'cursor', '') = '' THEN
       msg := public.shared_guard('list');
     ELSIF op = 'get' THEN
@@ -278,11 +296,11 @@ BEGIN
     IF p.id IS NULL THEN RAISE EXCEPTION '找不到這個 Prompt，請重新整理'; END IF;
     result := public.shared_prompt_card(p);
   ELSE
-    result := public.prompt_library_impl(request - 'maintainer');
+    result := public.prompt_library_impl(request - 'maintainer' - 'agent');
   END IF;
 
   -- 訪客拿到的卡片一律只有表面；匯入與存成新版本回傳的是自己剛送出的內容，照原樣
-  IF NOT is_m AND op NOT IN ('import', 'version') THEN
+  IF NOT trusted AND op NOT IN ('import', 'version') THEN
     result := public.shared_strip(result);
   END IF;
   RETURN result;

@@ -3,7 +3,7 @@ import {withDescription} from './describe.ts';
 import {parseInput} from '../parser.ts';
 import {organizeBrowser,searchBrowser} from './browser-store.ts';
 import {rewrite,snippet} from '../text-shared.ts';
-import {maintainerToken,isMaintainer} from './maintainer.ts';
+import {maintainerToken,isMaintainer,agentToken} from './maintainer.ts';
 import {type CardPrompt,type ImportJob,mergeVariables,categoryStats,defaultOrder,groupFullness} from './types.ts';
 import {CLOUD_CACHE_KEY,collectLegacy,legacyCard,legacyBackup,type LegacySnapshot} from './legacy-storage.ts';
 
@@ -23,7 +23,8 @@ export function createRpc(config:CloudConfig,transport:typeof fetch=fetch):Rpc {
   try{
    // 破壞性操作在資料庫端要驗這個 token；沒有就只剩新增與複製。
    const token=maintainerToken();
-   const payload=token?{...request,maintainer:token}:request;
+   const agent=agentToken();
+   const payload={...request,...(token?{maintainer:token}:{}),...(agent?{agent}:{})};
    const response=await transport(config.url+'/rest/v1/rpc/prompt_library',{method:'POST',headers:{apikey:config.key,'Content-Type':'application/json',...(config.key.startsWith('eyJ')?{Authorization:'Bearer '+config.key}:{})},body:JSON.stringify({request:payload}),signal:controller.signal,cache:'no-store'});
    const result=await response.json();if(!response.ok)throw new Error(result.message??`雲端請求失敗 (${response.status})`);
    if(result&&typeof result==='object'&&!Array.isArray(result)&&result.rate_limited)throw new Error(String(result.error??'操作太頻繁了，請稍候再試'));

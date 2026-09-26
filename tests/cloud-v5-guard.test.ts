@@ -6,6 +6,7 @@ import {pg_trgm} from '@electric-sql/pglite/contrib/pg_trgm';
 import {readFile,readdir} from 'node:fs/promises';
 
 const TOKEN='maintainer-token-for-tests-0001';
+const AGENT='agent-token-for-tests-00000001';
 
 async function fresh(){
   const db=new PGlite({extensions:{pgcrypto,pg_trgm}});const root=new URL('../',import.meta.url);
@@ -16,6 +17,7 @@ async function fresh(){
   const files=(await readdir(new URL('supabase/migrations/',root))).filter(f=>f.endsWith('.sql')&&!f.includes('storage')).sort();
   for(const f of files)await db.exec(await readFile(new URL('supabase/migrations/'+f,root),'utf8'));
   await db.query("insert into public.app_secret(name,hash) values('maintainer',encode(sha256(convert_to($1,'UTF8')),'hex'))",[TOKEN]);
+  await db.query("insert into public.app_secret(name,hash) values('agent',encode(sha256(convert_to($1,'UTF8')),'hex'))",[AGENT]);
   await db.exec('SET ROLE anon');
   const as=async(ip:string)=>{await db.query("select set_config('request.headers',$1,false)",[JSON.stringify({'cf-connecting-ip':ip,'x-forwarded-for':ip+', 10.0.0.1','user-agent':'test-agent'})]);};
   const rpc=async(request:any):Promise<any>=>(await db.query<any>('select public.prompt_library($1::jsonb) as result',[JSON.stringify(request)])).rows[0].result;
@@ -132,4 +134,24 @@ test('瀏覽器端：列表拿表面、點開拿全文、搜尋走資料庫、�
   // 被擋時變成看得懂的錯誤，而不是「資料格式不正確」
   for(let i=0;i<39;i++)await rpc({op:'get',id:a.id});
   await assert.rejects(store.api('/api/prompt?id='+a.id),/太頻繁/);
+});
+
+test('Agent 專用 token：不限流、拿得到全文，但不能刪、不能改、不能看監控',async()=>{
+  const {rpc,as}=await fresh();await as('8.8.8.8');
+  const body='請把這份產品需求整理成使用者故事，每一則都要有角色、目的與驗收條件，最後列出還沒釐清的問題。'.repeat(2);
+  const [p]=await rpc({op:'import',items:[item(body)]});
+  const [card]=await rpc({op:'list',agent:AGENT});
+  assert.equal(card.partial,undefined);assert.equal(card.body,body);
+  for(let i=0;i<60;i++)assert.ok(Array.isArray(await rpc({op:'get',id:p.id,agent:AGENT})),'不限流');
+  const viaUse=await rpc({op:'use',id:p.id,event:crypto.randomUUID(),agent:AGENT});
+  assert.equal(viaUse.body,body);
+  for(const op of ['delete','delete_many','merge','edit','access_stats','ip_block','whoami'])
+    await assert.rejects(rpc({op,id:p.id,ids:[p.id],ip:'1.1.1.1',agent:AGENT}),/保留給維護者/,op);
+  // 錯的 token 就是一般訪客
+  const [guest]=await rpc({op:'list',agent:'wrong-token-0000000000'});
+  assert.equal(guest.partial,true);
+  // 被封鎖的 IP，帶 Agent token 仍然可以用（token 本身就是身分）
+  await rpc({op:'ip_block',ip:'8.8.8.8',maintainer:TOKEN});
+  assert.ok(Array.isArray(await rpc({op:'list',agent:AGENT})));
+  assert.equal((await rpc({op:'list'})).rate_limited,true);
 });

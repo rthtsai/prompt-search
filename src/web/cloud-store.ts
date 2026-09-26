@@ -3,7 +3,7 @@ import {withDescription} from './describe.ts';
 import {parseInput} from '../parser.ts';
 import {organizeBrowser,searchBrowser} from './browser-store.ts';
 import {maintainerToken,isMaintainer} from './maintainer.ts';
-import {type CardPrompt,type ImportJob,mergeVariables,categoryStats} from './types.ts';
+import {type CardPrompt,type ImportJob,mergeVariables,categoryStats,defaultOrder} from './types.ts';
 import {CLOUD_CACHE_KEY,collectLegacy,legacyCard,legacyBackup,type LegacySnapshot} from './legacy-storage.ts';
 
 export type CloudConfig={url:string;key:string};
@@ -165,9 +165,7 @@ export class CloudStore {
    if(q.trim())items=searchBrowser(items,q);
    if(sort==='recent')items=items.filter(p=>p.last_used).sort((a,b)=>(b.last_used??'').localeCompare(a.last_used??''));
    else if(sort==='popular')items.sort((a,b)=>b.use_count-a.use_count);else if(!q){
-    // 預設排序：大家自己寫的排前面，站方的「精選範本」接在後面，各自再依更新時間。
-    const curated=(p:CardPrompt)=>p.tags.includes('精選範本')?1:0;
-    items.sort((a,b)=>curated(a)-curated(b)||b.updated_at.localeCompare(a.updated_at));
+    items.sort(defaultOrder);
    }
    const names=[...this.categoryList];for(const p of groups)if(!names.some(c=>c.name===p.category))names.push({name:p.category});
    return {items,total:groups.length,uses:all.reduce((n,p)=>n+p.use_count,0),categories:categoryStats(names,groups),tags:[...new Set(groups.flatMap(p=>p.tags))],mode:'cloud',degraded:offline,warning,manage:isMaintainer(),storage:this.config.url,stamp,synced_at:offline?undefined:new Date().toISOString()} as T;

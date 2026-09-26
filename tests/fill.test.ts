@@ -131,3 +131,22 @@ test('完全沒有使用紀錄時，照則數排，再照原本的手動順序',
   const cats=[{name:'A',count:1},{name:'B',count:5},{name:'C',count:1}];
   assert.deepEqual(rankCategories(cats).map(c=>c.name),['B','A','C']);
 });
+
+import {defaultOrder,exampleTier} from '../src/web/types.ts';
+test('預設排序：精選範本在後；同組內有圖 > 有檔案或文字 > 沒範例；再依更新時間',()=>{
+  const c=(id:string,o:{tags?:string[];examples?:any[];updated_at?:string;versions?:any[]}={})=>
+    ({id,title:id,tags:o.tags??[],examples:o.examples,versions:o.versions,updated_at:o.updated_at??'2026-09-01'} as any);
+  const img={kind:'image',path:'x.jpg',caption:''},file={kind:'file',path:'x.docx',caption:''},text={kind:'text',text:'…',caption:''};
+  const list=[
+    c('新但沒範例',{updated_at:'2026-09-26'}),
+    c('有文字',{examples:[text]}),
+    c('精選有圖',{tags:['精選範本'],examples:[img],updated_at:'2026-09-26'}),
+    c('有圖',{examples:[img]}),
+    c('有檔案',{examples:[file],updated_at:'2026-09-02'}),
+    c('精選沒範例',{tags:['精選範本']}),
+  ];
+  assert.deepEqual([...list].sort(defaultOrder).map(p=>p.id),
+    ['有圖','有檔案','有文字','新但沒範例','精選有圖','精選沒範例']);
+  // 範例掛在舊版本上也算
+  assert.equal(exampleTier({examples:[],versions:[{examples:[]},{examples:[img]}]} as any),2);
+});

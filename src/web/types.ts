@@ -75,3 +75,24 @@ export function rankCategories(cats:CategoryStat[],{includeEmpty=false}:{include
     .sort((a,b)=>(a.c.name==='其他'?1:0)-(b.c.name==='其他'?1:0)||score(b.c)-score(a.c)||b.c.count-a.c.count||a.i-b.i)
     .map(({c})=>c);
 }
+
+/**
+ * 範例的份量：2＝有圖或影片（卡片上會有封面），1＝只有檔案或文字，0＝沒有範例。
+ * 看整個版本群組，範例掛在舊版本上也算。
+ */
+export function exampleTier(p:Pick<CardPrompt,'examples'|'versions'>):number{
+  const all=(p.versions??[p]).flatMap(v=>v.examples??[]);
+  if(all.some(e=>(e.kind??'image')==='image'||e.kind==='video'))return 2;
+  return all.length?1:0;
+}
+
+/**
+ * 沒有搜尋字時的預設排序：
+ * 1. 大家自己寫的在前，站方的「精選範本」在後
+ * 2. 同一組裡，有圖的先、有檔案或文字範例的次之、沒有範例的最後
+ * 3. 再依更新時間，新的在前
+ */
+export function defaultOrder(a:CardPrompt,b:CardPrompt):number{
+  const curated=(p:CardPrompt)=>p.tags.includes('精選範本')?1:0;
+  return curated(a)-curated(b)||exampleTier(b)-exampleTier(a)||b.updated_at.localeCompare(a.updated_at);
+}
